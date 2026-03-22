@@ -1,0 +1,6 @@
+/Assets/QA_Books/Textures/BooksA_bc.tga filter=lfs diff=lfs merge=lfs -text
+/Assets/QA_Books/Textures/BooksA_m_ao_g.tga filter=lfs diff=lfs merge=lfs -text
+/Assets/QA_Books/Textures/BooksA_n.tga filter=lfs diff=lfs merge=lfs -text
+/Assets/QA_Books/Textures/Books_bc.tga filter=lfs diff=lfs merge=lfs -text
+/Assets/QA_Books/Textures/Books_m_ao_g.tga filter=lfs diff=lfs merge=lfs -text
+/Assets/QA_Books/Textures/Books_n.tga filter=lfs diff=lfs merge=lfs -text
