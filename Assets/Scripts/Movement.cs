@@ -18,14 +18,24 @@ public class Movement : MonoBehaviour
     // Update is called once per frame
     void Update()
     {
+
+        characterControllerSetting();
+       
+    }
+
+
+
+
+
+
+    public void characterControllerSetting()
+    {
         float horizontalInput = Input.GetAxis("Horizontal");
         float verticalInput = Input.GetAxis("Vertical");
         Vector3 moveDirection = transform.forward * verticalInput * speed;
 
         characterController.SimpleMove(moveDirection);
         this.transform.rotation = Quaternion.Euler(0, cameraTransform.rotation.eulerAngles.y, 0);
-        
-        
 
         if (Input.GetKey("a"))
         {
@@ -37,5 +47,12 @@ public class Movement : MonoBehaviour
             transform.Translate(0.1f, 0, 0);
 
         }
+    }
+
+
+    public void playerInteracter()
+    {
+       
+
     }
 }
