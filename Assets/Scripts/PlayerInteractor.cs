@@ -19,8 +19,8 @@ public class PlayerInteractor : MonoBehaviour
         if (Physics.Raycast(ray, out RaycastHit hit, interactRange))
         {
             // 嘗試取得互動物件
-            Interactable interactable = hit.collider.GetComponent<Interactable>();
-            if (interactable != null)
+            Target target = hit.collider.GetComponent<Target>();
+            if (target != null)
             {
                 Debug.Log("瞄準到互動物件：" + hit.collider.name);
                 ObjectName.GetComponent<Text>().text = hit.collider.name;
@@ -28,7 +28,7 @@ public class PlayerInteractor : MonoBehaviour
                 // 玩家按下互動鍵（例如 E）
                 if (Input.GetKeyDown(KeyCode.E))
                 {
-                    interactable.Interact();
+                    target.Interact();
                     
                     
                 }

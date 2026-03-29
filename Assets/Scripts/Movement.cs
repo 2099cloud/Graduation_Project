@@ -23,6 +23,7 @@ public class Movement : MonoBehaviour
         //Settings for characterControllerSetting();
         characterController = GetComponent<CharacterController>();
         cameraTransform = GameObject.Find("Main Camera").transform;
+        
         //Settings for playerInteractor();
         playerCamera = GameObject.Find("Main Camera").GetComponent<Camera>();
     }
@@ -80,7 +81,8 @@ public class Movement : MonoBehaviour
                 // «öE¶i¦æ¤¬°Ê
                 if (Input.GetKeyDown(KeyCode.E))
                 {
-                    //interactable.Interact();
+                    hit.collider.gameObject.GetComponent<Target>().Interact();
+                    //ObjectName.Interact();
 
 
                 }

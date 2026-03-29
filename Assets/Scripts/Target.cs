@@ -1,6 +1,6 @@
 using UnityEngine;
 
-public class Interactable : MonoBehaviour
+public class Target : MonoBehaviour
 {
     public GameObject ObjectExpo,Player,playerCamera;
     public string interactMessage = "你與物件互動了！";
@@ -16,12 +16,12 @@ public class Interactable : MonoBehaviour
         {
             ObjectExpo.SetActive(true);
             Debug.Log(interactMessage);
-            Player.GetComponent<Movement>().enabled = false;
+            Player.GetComponent<CharacterController>().enabled = false;
             playerCamera.GetComponent<CameraMovement>().enabled = false;
         }
         else
         {
-            Player.GetComponent<Movement>().enabled = true;
+            Player.GetComponent<CharacterController>().enabled = true;
             playerCamera.GetComponent<CameraMovement>().enabled = true;
             ObjectExpo.SetActive(false);
         }
