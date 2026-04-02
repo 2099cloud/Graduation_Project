@@ -72,7 +72,7 @@ public class Movement : MonoBehaviour
         {
             // 嘗試取得互動物件
             
-            if ((hit.collider.gameObject.tag) == "Interactable")
+            if ((hit.collider.gameObject.tag) == "Interactable_Object")
             {
                 Debug.Log("瞄準到物件：" + hit.collider.name);
                 ObjectName.GetComponent<Text>().text = hit.collider.name;//待修改

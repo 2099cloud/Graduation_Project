@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.UI;
 
 public class Target : MonoBehaviour
 {
@@ -12,7 +13,22 @@ public class Target : MonoBehaviour
     }
     public void Interact()
     {
-        if (ObjectExpo.activeInHierarchy == false)
+        if (gameObject.tag == "Interactable_Object")
+        {
+            ObjectInteraction();
+        }
+        else if(gameObject.tag=="Waypoint")
+        {
+            ObjectInteraction();
+            ObjectExpo.GetComponent<Text>().text ="Enter [Y/N]";
+        }
+
+            
+        // 這裡可以放開門、撿東西、觸發事件等邏輯
+    }
+    public void ObjectInteraction()
+    {
+        if (Player.GetComponent<CharacterController>().enabled == true)
         {
             ObjectExpo.SetActive(true);
             Debug.Log(interactMessage);
@@ -25,8 +41,5 @@ public class Target : MonoBehaviour
             playerCamera.GetComponent<CameraMovement>().enabled = true;
             ObjectExpo.SetActive(false);
         }
-       
-        // 這裡可以放開門、撿東西、觸發事件等邏輯
     }
-    
 }

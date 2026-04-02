@@ -5,7 +5,8 @@ TagManager:
   serializedVersion: 2
   tags:
   - ObjectExpo
-  - Interactable
+  - Interactable_Object
+  - Waypoint
   layers:
   - Default
   - TransparentFX
