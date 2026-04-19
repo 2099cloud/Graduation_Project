@@ -18,6 +18,15 @@ public class Scene_Manage : MonoBehaviour
     }
     public void StartGame()
     {
+        SceneManager.LoadScene(1);
+    }
+
+    public void ExitGame()
+    {
+        Application.Quit();
+    }
+    public void LoadScene()
+    {
         SceneManager.LoadScene("scene");
     }
 }
