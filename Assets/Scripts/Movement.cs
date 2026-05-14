@@ -81,7 +81,7 @@ public class Movement : MonoBehaviour
                 // «öE¶i¦æ¤¬°Ê
                 if (Input.GetKeyDown(KeyCode.E))
                 {
-                    hit.collider.gameObject.GetComponent<Target>().Interact();
+                    //hit.collider.gameObject.GetComponent<Target>().Interact();
                     //ObjectName.Interact();
 
 

@@ -19,7 +19,7 @@ public class PlayerInteractor : MonoBehaviour
         if (Physics.Raycast(ray, out RaycastHit hit, interactRange))
         {
             // 嘗試取得互動物件
-            Target target = hit.collider.GetComponent<Target>();
+            /*Target target = hit.collider.GetComponent<Target>();
             if (target != null)
             {
                 Debug.Log("瞄準到互動物件：" + hit.collider.name);
@@ -38,7 +38,7 @@ public class PlayerInteractor : MonoBehaviour
             {
                 ObjectName.GetComponent<Text>().text = " ";
                 Point.GetComponent<Image>().color = new Color(255, 255, 255);
-            }
+            }*/
         }
        
     }
