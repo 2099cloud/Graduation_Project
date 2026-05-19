@@ -1,0 +1,3 @@
+SceneID,ObjectID,IsActive,TargetKnot
+1,phone,true,PickUpthePhone
+2,phone,true,Answer_the_call

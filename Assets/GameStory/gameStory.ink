@@ -1,6 +1,5 @@
 INCLUDE 2nd scene.ink
-VAR scene = 0
-
+VAR scene = 1
 
 === PickUpthePhone ===
 要是當初，我能更早發現就好了...
@@ -8,7 +7,7 @@ VAR scene = 0
 + [接聽] 
     # PhoneAction: PickUp
     # ChangePhoneImage: Incoming_Call
-    -> Answer_the_call
+    -> Switch_scene2
 
 + [掛斷] 
     
@@ -21,20 +20,27 @@ VAR scene = 0
 來電
 
 
-    -> Switch_scene
+    -> Switch_scene2
 
 === Hang_up_the_call ===
 掛斷
-    -> Switch_scene
+    -> Switch_scene2
 
 === test ===
 人家是個他喵的測試用節點
 //->DONE
 ->END
 
-=== Switch_scene ===
+=== Switch_scene2 ===
 ~ scene = scene + 1
-切換至場景 {scene}
+//切換至場景 {scene}
+->Scene2_start
+
+
+=== example ===
+突然間，桌上的手機螢幕亮了起來。
+# phone.prefab.incomingcall
+# position(0.5, 1.2, -0.2)
+# rotation(0, 180, 0)
+# TargetKnot="Answer_the_call"
 ->END
-
-
