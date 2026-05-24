@@ -1,7 +1,11 @@
 === Scene2_start ===
 .# phone.prefab.smile
 .#Area Light.prefab.Yellow
+.#Front door.TargetKnot="Answer_the_door"
+.#Task.text.應門
+
 -> Task_Assignment
+
 
 === Play_Animation ===
  // 注意這裡前面有一個空格，用來帶出標籤
@@ -13,9 +17,15 @@
 
 === Task_Assignment ===
  // 派發任務：讀取應門項目
-.#Task.text.應門
+//.#Task.text.應門
 -> DONE
 
-=== Delivery_man ===
+=== Answer_the_door===
++[應門?]
+->DONE
++[不理會]
+->DONE
+
+=== Receive_package ===
  外送員站在門口，看起來有些焦慮。
 -> DONE

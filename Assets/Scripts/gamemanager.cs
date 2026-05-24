@@ -4,7 +4,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using Ink.Runtime;
 using TMPro;
-using UnityEngine.Playables; // 【新增】Timeline 控制必備命名空間
+using UnityEngine.Playables;
 
 public class GameManager : MonoBehaviour
 {
@@ -21,10 +21,10 @@ public class GameManager : MonoBehaviour
     [Tooltip("拖入畫面上負責顯示目前任務的 TMP 組件")]
     public TextMeshProUGUI taskText;
     [Tooltip("任務 CSV 配置文件(放於 Resources 正下方，不含副檔名)")]
-    public string taskCsvPath = "TaskManager"; // 已改為大寫 TaskManager
+    public string taskCsvPath = "TaskManager";
 
     [Header("Timeline 配置")]
-    [Tooltip("場景中負責播放動畫的 PlayableDirector 組件")]
+    [Tooltip("場景中負責播放動畫的 Playable Director 組件")]
     public PlayableDirector globalDirector;
 
     [Header("數據與過渡配置")]
@@ -42,12 +42,48 @@ public class GameManager : MonoBehaviour
     private Dictionary<string, InteractableObject> allSceneObjects = new Dictionary<string, InteractableObject>();
     private int currentSceneID = 0;
 
-    // 追蹤當前對話中，標籤正在操作的目標物件名稱
     private string currentTargetObjectName = "";
+
+    // 紀錄任務原始狀態與彈出狀態的變數
+    private string currentTaskTitle = "";
+    private string currentTaskFullContent = "";
+    private bool isTaskPopupOpen = false;
+
+    // 過渡狀態鎖與標籤暫存器
+    private bool isTransitioning = false;
+    private List<string> deferredTags = new List<string>();
+
+    // 用於記錄 taskText 還原用的原始變數
+    private Vector3 originalPosition;
+    private Vector2 originalPivot;
+    private Vector2 originalAnchorMin;
+    private Vector2 originalAnchorMax;
+    private Vector2 originalAnchoredPosition;
+    private float originalFontSize;
+    private Color originalColor;
+    private Transform originalParent;
 
     void Awake()
     {
         RefreshSceneObjectsDictionary();
+
+        if (taskText != null)
+        {
+            RectTransform rect = taskText.rectTransform;
+            originalPosition = rect.localPosition;
+            originalPivot = rect.pivot;
+            originalAnchorMin = rect.anchorMin;
+            originalAnchorMax = rect.anchorMax;
+            originalAnchoredPosition = rect.anchoredPosition;
+            originalFontSize = taskText.fontSize;
+            originalColor = taskText.color;
+            originalParent = taskText.transform.parent;
+
+            Button btn = taskText.gameObject.GetComponent<Button>();
+            if (btn == null) btn = taskText.gameObject.AddComponent<Button>();
+            btn.onClick.RemoveAllListeners();
+            btn.onClick.AddListener(OnTaskTextClicked);
+        }
     }
 
     void Start()
@@ -55,7 +91,6 @@ public class GameManager : MonoBehaviour
         if (!inkJsonAsset) return;
         story = new Story(inkJsonAsset.text);
 
-        // 監聽 Ink 變數 scene
         story.ObserveVariable("scene", (varName, newValue) => {
             StartCoroutine(SceneTransition((int)newValue));
         });
@@ -65,7 +100,16 @@ public class GameManager : MonoBehaviour
 
     void Update()
     {
-        if (isWaitingForChoice) return;
+        if (isTaskPopupOpen)
+        {
+            if (Input.GetMouseButtonDown(0))
+            {
+                OnCloseTaskPopupClicked();
+            }
+            return;
+        }
+
+        if (isWaitingForChoice || isTransitioning) return; // 換幕時不允許點擊互動
         if (Input.GetMouseButtonDown(0))
         {
             if (DetectObjectClick()) return;
@@ -77,27 +121,33 @@ public class GameManager : MonoBehaviour
 
     private void ContinueStory()
     {
-        if (!story.canContinue) return;
         string text = "";
-        while (story.canContinue && string.IsNullOrWhiteSpace(text))
-            text = story.Continue().Trim();
 
+        // 核心改動：使用 do-while 機制，如果當前行沒有實質文字，且故事還能繼續，就自動往下讀取，不卡滑鼠點擊
+        do
+        {
+            if (!story.canContinue) break;
+
+            text = story.Continue().Trim();
+            HandleTags(story.currentTags);
+
+        } while ((string.IsNullOrWhiteSpace(text) || text == ".") && story.canContinue);
+
+        // 處理最終要呈現的文字
         if (!string.IsNullOrWhiteSpace(text))
         {
-            // 【關鍵防呆】：如果發現台詞只是我們用來帶標籤的點「.」，就讓它變空字串
-            if (text == ".")
-            {
-                dialogueText.text = "";
-            }
-            else
-            {
-                dialogueText.text = text; // 正常的台詞照常顯示
-            }
+            if (text == ".") dialogueText.text = "";
+            else dialogueText.text = text;
 
             currentTargetObjectName = "";
-            HandleTags(story.currentTags);
+        }
+        else
+        {
+            // 如果跳出迴圈後 text 依然是空的或點號（通常是到了故事盡頭），則清空文字
+            if (text == "" || text == ".") dialogueText.text = "";
         }
 
+        // 檢查是否到了需要顯示選項的階段
         if (!story.canContinue && story.currentChoices.Count > 0)
             StartCoroutine(ToggleChoiceUI(true));
     }
@@ -111,34 +161,46 @@ public class GameManager : MonoBehaviour
         ContinueStory();
     }
 
-    // --- 場景更新邏輯 (換幕統一讀一份表) ---
+    // --- 場景更新邏輯 ---
 
     IEnumerator SceneTransition(int nextScene)
     {
         isWaitingForChoice = true;
-        yield return new WaitForSeconds(bufferTime);
-        yield return Fade(1);
+        isTransitioning = true; // 鎖定狀態，開始過渡
+        deferredTags.Clear();   // 清空舊的延遲標籤緩存
 
+        yield return new WaitForSeconds(bufferTime);
+        yield return Fade(1); // 直到畫面完全變黑
+
+        // 黑幕已蓋滿，這時候更新環境與生成 Prefab
         currentSceneID = nextScene;
         UpdateEnvironment(nextScene);
 
-        // 換幕時自動解除全場景的互動鎖定，確保新幕能正常互動
+        // 在全黑狀態下，補跑剛才被攔截下來的 Ink 標籤
+        if (deferredTags.Count > 0)
+        {
+            ExecuteTagsReal(deferredTags);
+            deferredTags.Clear();
+        }
+
         SetAllObjectsInteractable(true);
 
         yield return new WaitForSeconds(0.5f);
-        yield return Fade(0);
+        yield return Fade(0); // 淡出黑幕
+
+        isTransitioning = false; // 解除鎖定
         isWaitingForChoice = false;
+
         ContinueStory();
     }
 
     void UpdateEnvironment(int sceneID)
     {
-        // 統一讀取位於 Resources/ 下的單一表單
         TextAsset sceneConfigCsv = Resources.Load<TextAsset>(csvResourcePath);
 
         if (sceneConfigCsv == null)
         {
-            Debug.LogError($"[GameManager] 在 Resources 下找不到名為 '{csvResourcePath}' 的全域 CSV 檔案！");
+            Debug.LogError("[GameManager] 在 Resources 下找不到全域 CSV 檔案！");
             return;
         }
 
@@ -156,13 +218,19 @@ public class GameManager : MonoBehaviour
                 bool active = (data[2].Trim().ToLower() == "true");
                 string knot = data[3].Trim();
 
+                if (id.StartsWith("Task."))
+                {
+                    string taskID = id.Replace("Task.", "").Trim();
+                    ParseAndSetTask($"Task.text.{taskID}");
+                    continue;
+                }
+
                 if (allSceneObjects.ContainsKey(id))
                 {
                     allSceneObjects[id].gameObject.SetActive(active);
                     allSceneObjects[id].isInteractable = active;
                     if (!string.IsNullOrEmpty(knot)) allSceneObjects[id].targetKnot = knot;
-
-                    Debug.Log($"場景 {sceneID}: 已更新靜態物件 {id} 狀態為 {active}");
+                    Debug.Log("場景 " + sceneID + ": 已更新靜態物件 " + id + " 狀態為 " + active);
                 }
             }
         }
@@ -172,48 +240,57 @@ public class GameManager : MonoBehaviour
 
     void HandleTags(List<string> tags)
     {
-        // 防呆檢查 1：看看這句台詞到底有沒有帶任何標籤過來
-        Debug.Log($"[HandleTags 觸發] 當前台詞偵測到 {tags.Count} 個標籤。");
+        if (tags == null || tags.Count == 0) return;
 
-        // 第一輪：先找出是否有置換 Prefab 的主要指令 (例如: phone.prefab.incomingcall)
+        // 如果目前處於變黑的過渡期，先把標籤存起來，稍後再執行
+        if (isTransitioning)
+        {
+            foreach (var tag in tags)
+            {
+                deferredTags.Add(tag);
+            }
+            return;
+        }
+
+        // 如果不是在換幕期間，維持原樣直接執行
+        ExecuteTagsReal(tags);
+    }
+
+    // 將原本 HandleTags 的核心邏輯抽離出來，方便在全黑時呼叫
+    void ExecuteTagsReal(List<string> tags)
+    {
+        // 優先處理所有具有生成性質的 Prefab 標籤
         foreach (string tag in tags)
         {
             string cleanTag = tag.Trim();
-            Debug.Log($"[收到標籤] 內容為: {cleanTag}"); // 防呆檢查 2：把每個收到的標籤印出來
             if (cleanTag.Contains(".prefab."))
             {
                 ParseAndSwapPrefab(cleanTag);
-                break; // 找到主導物件即可
             }
         }
 
-        // 第二輪：處理屬性、材質球、鎖定互動、任務與 Timeline
+        // 處理其他屬性控制標籤
         foreach (string tag in tags)
         {
             string cleanTag = tag.Trim();
-            if (cleanTag.Contains(".prefab.")) continue; // 跳過已處理的主指令
+            if (cleanTag.Contains(".prefab.")) continue;
 
-            // 1. 全場景互動鎖定：InteractableObject.non-interactable
             if (cleanTag == "InteractableObject.non-interactable")
             {
                 SetAllObjectsInteractable(false);
             }
-            // 2. 任務更換：Task.text.應門
             else if (cleanTag.StartsWith("Task.text."))
             {
                 ParseAndSetTask(cleanTag);
             }
-            // 3. 材質球切換：phone.material.M_Phone_Calling
             else if (cleanTag.Contains(".material."))
             {
                 ParseAndSwapMaterial(cleanTag);
             }
-            // 4. Timeline 動態播放：phone.timeline.incoming_ring
             else if (cleanTag.Contains(".timeline."))
             {
                 ParseAndPlayTimeline(cleanTag);
             }
-            // 5. 其餘基礎屬性設定 (position, rotation, TargetKnot)
             else
             {
                 ParseObjectAttributes(cleanTag);
@@ -221,80 +298,83 @@ public class GameManager : MonoBehaviour
         }
     }
 
-    // 解析並換掉 Prefab。格式範例: phone.prefab.incomingcall
-    void ParseAndSwapPrefab(string tag)
+    // --- 任務介面核心切換邏輯 ---
+
+    public void OnTaskTextClicked()
     {
-        string[] split = tag.Split(new string[] { ".prefab." }, System.StringSplitOptions.None);
-        if (split.Length < 2) return;
+        if (string.IsNullOrEmpty(currentTaskTitle) || isTaskPopupOpen) return;
+        if (fadeGroup != null && fadeGroup.alpha > 0.9f) return;
 
-        string objName = split[0].Trim();       // "phone"
-        string prefabName = split[1].Trim();    // "incomingcall"
+        isTaskPopupOpen = true;
 
-        currentTargetObjectName = objName; // 綁定當前要操作的物件
-
-        // 1. 如果場景中已經有舊的同名物件，先把它移除
-        if (allSceneObjects.ContainsKey(objName))
+        if (fadeGroup != null)
         {
-            Destroy(allSceneObjects[objName].gameObject);
-            allSceneObjects.Remove(objName);
+            fadeGroup.alpha = 0.65f;
+            fadeGroup.blocksRaycasts = true;
         }
 
-        // 2. 從動態物件路徑載入新 Prefab，路徑：Prefabs/phone/incomingcall
-        string loadPath = $"Prefabs/{objName}/{prefabName}";
-        GameObject newPrefab = Resources.Load<GameObject>(loadPath);
-
-        if (newPrefab != null)
+        if (taskText != null && fadeGroup != null)
         {
-            GameObject spawnedInstance = Instantiate(newPrefab, environmentHolder);
-            spawnedInstance.name = objName; // 強制將生成的物件名稱洗回 "phone"，維持識別一致性
+            taskText.transform.SetParent(fadeGroup.transform, true);
 
-            RefreshSceneObjectsDictionary();
-            Debug.Log($"[動態置換] 成功載入 {loadPath} 並替換舊有物件。");
-        }
-        else
-        {
-            Debug.LogError($"[動態置換] 找不到 Prefab 路徑: Resources/{loadPath}");
+            RectTransform rect = taskText.rectTransform;
+            rect.anchorMin = new Vector2(0.5f, 0.5f);
+            rect.anchorMax = new Vector2(0.5f, 0.5f);
+            rect.pivot = new Vector2(0.5f, 0.5f);
+            rect.anchoredPosition = Vector2.zero;
+
+            taskText.fontSize = originalFontSize * 1.5f;
+            taskText.color = Color.white;
+            taskText.alignment = TextAlignmentOptions.Center;
+
+            taskText.text = "<color=#FFCC00><b>" + currentTaskTitle + "</b></color>\n\n<size=80%>" + currentTaskFullContent + "</size>";
         }
     }
 
-    // 解析其餘屬性標籤。格式範例: position(0,1,0), rotation(0,90,0), TargetKnot="KnotName"
-    void ParseObjectAttributes(string tag)
+    public void OnCloseTaskPopupClicked()
     {
-        if (string.IsNullOrEmpty(currentTargetObjectName) || !allSceneObjects.ContainsKey(currentTargetObjectName)) return;
+        if (!isTaskPopupOpen) return;
 
-        GameObject targetGo = allSceneObjects[currentTargetObjectName].gameObject;
-        InteractableObject targetInteract = allSceneObjects[currentTargetObjectName];
+        if (fadeGroup != null)
+        {
+            fadeGroup.alpha = 0f;
+            fadeGroup.blocksRaycasts = false;
+        }
 
-        // 處理位置設定: position(x,y,z)
-        if (tag.StartsWith("position"))
+        if (taskText != null)
         {
-            Vector3 pos = ExtractVector3(tag);
-            targetGo.transform.localPosition = pos;
-            Debug.Log($"[屬性變更] {currentTargetObjectName} 位置修改為: {pos}");
+            taskText.transform.SetParent(originalParent, true);
+
+            RectTransform rect = taskText.rectTransform;
+            rect.anchorMin = originalAnchorMin;
+            rect.anchorMax = originalAnchorMax;
+            rect.pivot = originalPivot;
+            rect.anchoredPosition = originalAnchoredPosition;
+            rect.localPosition = originalPosition;
+
+            taskText.fontSize = originalFontSize;
+            taskText.color = originalColor;
+            taskText.alignment = TextAlignmentOptions.Left;
+
+            taskText.text = "目前任務：" + currentTaskTitle;
+
+            Button btn = taskText.gameObject.GetComponent<Button>();
+            if (btn == null) btn = taskText.gameObject.AddComponent<Button>();
+            btn.onClick.RemoveAllListeners();
+            btn.onClick.AddListener(OnTaskTextClicked);
         }
-        // 處理角度設定: rotation(x,y,z)
-        else if (tag.StartsWith("rotation"))
-        {
-            Vector3 rot = ExtractVector3(tag);
-            targetGo.transform.localEulerAngles = rot;
-            Debug.Log($"[屬性變更] {currentTargetObjectName} 角度修改為: {rot}");
-        }
-        // 處理跳轉節點: TargetKnot="KnotName" 
-        else if (tag.StartsWith("TargetKnot"))
-        {
-            string[] parts = tag.Split('=');
-            if (parts.Length >= 2)
-            {
-                string knot = parts[1].Replace("\"", "").Trim(); // 去除雙引號
-                targetInteract.targetKnot = knot;
-                Debug.Log($"[屬性變更] {currentTargetObjectName} 互動節點修改為: {knot}");
-            }
-        }
+
+        StartCoroutine(ResetPopupFlag());
     }
 
-    // --- 擴充功能核心邏輯 ---
+    private IEnumerator ResetPopupFlag()
+    {
+        yield return null;
+        isTaskPopupOpen = false;
+    }
 
-    // 1. 全場景互動控制
+    // --- 其餘擴充功能 ---
+
     void SetAllObjectsInteractable(bool state)
     {
         InteractableObject[] allObjects = FindObjectsOfType<InteractableObject>(true);
@@ -302,24 +382,16 @@ public class GameManager : MonoBehaviour
         {
             obj.isInteractable = state;
         }
-        Debug.Log($"[系統控制] 已將全場景 {allObjects.Length} 個物件的互動狀態設為: {state}");
     }
 
-    // 2. 任務系統：讀取 TaskManager.csv 並更換 TMP 文字
     void ParseAndSetTask(string tag)
     {
         string taskID = tag.Replace("Task.text.", "").Trim();
-
         TextAsset taskCsv = Resources.Load<TextAsset>(taskCsvPath);
-        if (taskCsv == null)
-        {
-            Debug.LogError($"[任務系統] 找不到 Resources/{taskCsvPath}.csv 檔案！");
-            return;
-        }
+        if (taskCsv == null) return;
 
         string csvText = taskCsv.text.Replace("\r", "");
         string[] lines = csvText.Split('\n');
-        bool foundTask = false;
 
         for (int i = 1; i < lines.Length; i++)
         {
@@ -328,90 +400,126 @@ public class GameManager : MonoBehaviour
 
             if (data[0].Trim() == taskID)
             {
-                string taskContent = data[1].Trim();
-                if (taskText != null)
+                currentTaskTitle = taskID;
+                currentTaskFullContent = data[1].Trim();
+
+                if (taskText != null && !isTaskPopupOpen)
                 {
-                    taskText.text = $"目前任務：{taskContent}";
+                    taskText.text = "目前任務：" + currentTaskTitle;
                 }
-                Debug.Log($"[任務系統] 任務更新成功 -> 【{taskID}】: {taskContent}");
-                foundTask = true;
                 break;
             }
         }
+    }
 
-        if (!foundTask)
+    void ParseAndSwapPrefab(string tag)
+    {
+        string[] split = tag.Split(new string[] { ".prefab." }, System.StringSplitOptions.None);
+        if (split.Length < 2) return;
+
+        string objName = split[0].Trim();
+        string prefabName = split[1].Trim();
+
+        currentTargetObjectName = objName;
+
+        if (allSceneObjects.ContainsKey(objName))
         {
-            Debug.LogWarning($"[任務系統] 在 CSV 中找不到名為 '{taskID}' 的任務項目。");
+            Destroy(allSceneObjects[objName].gameObject);
+            allSceneObjects.Remove(objName);
+        }
+
+        string loadPath = "Prefabs/" + objName + "/" + prefabName;
+        GameObject newPrefab = Resources.Load<GameObject>(loadPath);
+
+        if (newPrefab != null)
+        {
+            GameObject spawnedInstance = Instantiate(newPrefab, environmentHolder);
+            spawnedInstance.name = objName;
+            RefreshSceneObjectsDictionary();
         }
     }
 
-    // 3. 材質球動態切換處理器。格式範例: phone.material.M_Phone_Calling
+    void ParseObjectAttributes(string tag)
+    {
+        string targetObjectName = "";
+        string commandContent = "";
+
+        // 檢查指令是否包含物件名稱前綴 (例如 phone.position)
+        if (tag.Contains(".position") || tag.Contains(".rotation") || tag.Contains(".TargetKnot"))
+        {
+            int firstDotIndex = tag.IndexOf('.');
+            if (firstDotIndex > 0)
+            {
+                targetObjectName = tag.Substring(0, firstDotIndex).Trim();
+                commandContent = tag.Substring(firstDotIndex + 1).Trim();
+            }
+        }
+        else
+        {
+            // 回退機制：若不含點號前綴，則使用上一次記錄的 currentTargetObjectName
+            targetObjectName = currentTargetObjectName;
+            commandContent = tag;
+        }
+
+        // 安全檢查：若找不對對應的場景物件則直接跳出
+        if (string.IsNullOrEmpty(targetObjectName) || !allSceneObjects.ContainsKey(targetObjectName)) return;
+
+        GameObject targetGo = allSceneObjects[targetObjectName].gameObject;
+        InteractableObject targetInteract = allSceneObjects[targetObjectName];
+
+        if (commandContent.StartsWith("position"))
+        {
+            targetGo.transform.localPosition = ExtractVector3(commandContent);
+        }
+        else if (commandContent.StartsWith("rotation"))
+        {
+            targetGo.transform.localEulerAngles = ExtractVector3(commandContent);
+        }
+        else if (commandContent.StartsWith("TargetKnot"))
+        {
+            string[] parts = commandContent.Split('=');
+            if (parts.Length >= 2)
+            {
+                targetInteract.targetKnot = parts[1].Replace("\"", "").Trim();
+            }
+        }
+    }
+
     void ParseAndSwapMaterial(string tag)
     {
         string[] split = tag.Split(new string[] { ".material." }, System.StringSplitOptions.None);
         if (split.Length < 2) return;
 
-        string objName = split[0].Trim();       // "phone"
-        string materialName = split[1].Trim();  // "M_Phone_Calling"
+        string objName = split[0].Trim();
+        string materialName = split[1].Trim();
 
         if (allSceneObjects.ContainsKey(objName))
         {
             GameObject targetGo = allSceneObjects[objName].gameObject;
-            string matPath = $"Prefabs/{objName}/Materials/{materialName}";
-            Material newMat = Resources.Load<Material>(matPath);
-
+            Material newMat = Resources.Load<Material>("Prefabs/" + objName + "/Materials/" + materialName);
             if (newMat != null)
             {
                 MeshRenderer renderer = targetGo.GetComponentInChildren<MeshRenderer>();
-                if (renderer != null)
-                {
-                    renderer.material = newMat;
-                    Debug.Log($"[動態材質] 成功將 {objName} 的材質更換為: {materialName}");
-                }
-                else
-                {
-                    Debug.LogWarning($"[動態材質] 找不到 {objName} 身上的 MeshRenderer 組件。");
-                }
-            }
-            else
-            {
-                Debug.LogError($"[動態材質] 找不到材質球，請檢查路徑是否為: Resources/{matPath}");
+                if (renderer != null) renderer.material = newMat;
             }
         }
     }
 
-    // 4. Timeline 動態播放處理器。格式範例: phone.timeline.incoming_ring
     void ParseAndPlayTimeline(string tag)
     {
-        if (globalDirector == null)
-        {
-            Debug.LogError("[Timeline 系統] 場景中未綁定 PlayableDirector，無法播放動畫！");
-            return;
-        }
-
+        if (globalDirector == null) return;
         string[] split = tag.Split(new string[] { ".timeline." }, System.StringSplitOptions.None);
         if (split.Length < 2) return;
 
-        string objName = split[0].Trim();      // "phone"
-        string timelineName = split[1].Trim(); // "incoming_ring"
-
-        string loadPath = $"Prefabs/{objName}/Timelines/{timelineName}";
-        PlayableAsset timelineAsset = Resources.Load<PlayableAsset>(loadPath);
-
+        PlayableAsset timelineAsset = Resources.Load<PlayableAsset>("Prefabs/" + split[0].Trim() + "/Timelines/" + split[1].Trim());
         if (timelineAsset != null)
         {
             globalDirector.Stop();
             globalDirector.playableAsset = timelineAsset;
             globalDirector.Play();
-            Debug.Log($"[Timeline 系統] 成功載入並播放: {loadPath}");
-        }
-        else
-        {
-            Debug.LogError($"[Timeline 系統] 找不到 Timeline 資源，請檢查路徑: Resources/{loadPath}");
         }
     }
 
-    // 輔支工具：將 "position(0,1.5,0)" 這種字串提取為 Vector3 結構
     Vector3 ExtractVector3(string tag)
     {
         try
@@ -420,18 +528,9 @@ public class GameManager : MonoBehaviour
             int end = tag.IndexOf(')');
             string content = tag.Substring(start, end - start);
             string[] values = content.Split(',');
-
-            return new Vector3(
-                float.Parse(values[0].Trim()),
-                float.Parse(values[1].Trim()),
-                float.Parse(values[2].Trim())
-            );
+            return new Vector3(float.Parse(values[0].Trim()), float.Parse(values[1].Trim()), float.Parse(values[2].Trim()));
         }
-        catch
-        {
-            Debug.LogError($"[解析錯誤] 標籤 '{tag}' 的 Vector3 格式有誤，請確保格式為 (x,y,z) 且使用英文逗號。");
-            return Vector3.zero;
-        }
+        catch { return Vector3.zero; }
     }
 
     void RefreshSceneObjectsDictionary()
@@ -439,12 +538,9 @@ public class GameManager : MonoBehaviour
         allSceneObjects.Clear();
         foreach (var obj in FindObjectsOfType<InteractableObject>(true))
         {
-            if (!allSceneObjects.ContainsKey(obj.name))
-                allSceneObjects[obj.name] = obj;
+            if (!allSceneObjects.ContainsKey(obj.name)) allSceneObjects[obj.name] = obj;
         }
     }
-
-    // --- 工具與 UI ---
 
     IEnumerator Fade(float targetAlpha)
     {

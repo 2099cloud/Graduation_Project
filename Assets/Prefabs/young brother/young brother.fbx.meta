@@ -504,6 +504,11 @@ ModelImporter:
       position: {x: 0, y: 0, z: 0}
       rotation: {x: 0, y: 0, z: 0, w: 1}
       scale: {x: 1, y: 1, z: 1}
+    - name: eyebrow001Mesh
+      parentName: young brother(Clone)
+      position: {x: -0, y: 0, z: 0}
+      rotation: {x: 0, y: -0, z: -0, w: 1}
+      scale: {x: 1, y: 1, z: 1}
     - name: Game_engine
       parentName: young brother(Clone)
       position: {x: -0, y: 0, z: 0}
@@ -522,7 +527,7 @@ ModelImporter:
     - name: spine_01
       parentName: pelvis
       position: {x: 7.213425e-18, y: 0.08237036, z: -0.000000009380934}
-      rotation: {x: 0.24277195, y: -0, z: -0, w: 0.97008336}
+      rotation: {x: 0.24277197, y: -0, z: -0, w: 0.9700834}
       scale: {x: 1, y: 0.9999999, z: 0.99999976}
     - name: spine_02
       parentName: spine_01
@@ -542,7 +547,7 @@ ModelImporter:
     - name: upperarm_l
       parentName: clavicle_l
       position: {x: 0.000000045634387, y: 0.1544436, z: 0.0000000057997407}
-      rotation: {x: 0.02069831, y: -0.024402767, z: -0.08089115, w: 0.99620914}
+      rotation: {x: 0.020698313, y: -0.02440277, z: -0.080891155, w: 0.9962092}
       scale: {x: 1.0000013, y: 1.0000005, z: 0.9999998}
     - name: lowerarm_l
       parentName: upperarm_l
@@ -567,22 +572,22 @@ ModelImporter:
     - name: index_03_l
       parentName: index_02_l
       position: {x: -0.00000002787654, y: 0.021516383, z: 0.00000003119201}
-      rotation: {x: 0.08256743, y: -0.00012330845, z: -0.025357839, w: 0.9962628}
+      rotation: {x: 0.08256744, y: -0.00012330846, z: -0.02535784, w: 0.99626285}
       scale: {x: 0.9999998, y: 0.9999998, z: 1.0000001}
     - name: middle_01_l
       parentName: hand_l
       position: {x: -0.005182897, y: 0.093132034, z: -0.008757359}
-      rotation: {x: 0.02999155, y: -0.41928476, z: 0.093484595, w: 0.90253055}
+      rotation: {x: 0.029991552, y: -0.4192848, z: 0.0934846, w: 0.9025306}
       scale: {x: 1.0000005, y: 1.0000002, z: 1.0000004}
     - name: middle_02_l
       parentName: middle_01_l
       position: {x: -0.000000019443704, y: 0.03139066, z: 0.000000023402594}
-      rotation: {x: 0.034577362, y: -0.0020152319, z: -0.01992572, w: 0.9992013}
+      rotation: {x: 0.034577366, y: -0.002015232, z: -0.019925721, w: 0.99920136}
       scale: {x: 1, y: 0.99999934, z: 0.99999946}
     - name: middle_03_l
       parentName: middle_02_l
       position: {x: 0.000000022078165, y: 0.024926398, z: -0.000000019438767}
-      rotation: {x: 0.054487664, y: -0.0000024558967, z: 0.005955438, w: 0.99849665}
+      rotation: {x: 0.054487668, y: -0.000002455897, z: 0.0059554386, w: 0.9984967}
       scale: {x: 1.0000001, y: 1.0000006, z: 1.0000005}
     - name: pinky_01_l
       parentName: hand_l
@@ -612,12 +617,12 @@ ModelImporter:
     - name: ring_03_l
       parentName: ring_02_l
       position: {x: 0.000000008132463, y: 0.02265327, z: -0.000000008386918}
-      rotation: {x: 0.06849598, y: 0.00006404936, z: 0.027112765, w: 0.99728286}
+      rotation: {x: 0.06849599, y: 0.00006404937, z: 0.027112767, w: 0.9972829}
       scale: {x: 1.0000001, y: 1.0000006, z: 1.0000002}
     - name: thumb_01_l
       parentName: hand_l
       position: {x: 0.013054695, y: 0.036999635, z: 0.013445684}
-      rotation: {x: 0.024414647, y: -0.72296166, z: -0.35532382, w: 0.5920097}
+      rotation: {x: 0.024414647, y: -0.7229616, z: -0.35532382, w: 0.59200966}
       scale: {x: 1.0000004, y: 1.0000002, z: 1.0000001}
     - name: thumb_02_l
       parentName: thumb_01_l
@@ -642,7 +647,7 @@ ModelImporter:
     - name: lowerarm_r
       parentName: upperarm_r
       position: {x: 0.000000035992155, y: 0.21271214, z: -0.0000000030008107}
-      rotation: {x: 0.025868941, y: -0.010725846, z: 0.020992735, w: 0.99938744}
+      rotation: {x: 0.025868937, y: -0.010725846, z: 0.020992734, w: 0.99938744}
       scale: {x: 1.0000008, y: 1.0000004, z: 1.0000001}
     - name: hand_r
       parentName: lowerarm_r
@@ -667,7 +672,7 @@ ModelImporter:
     - name: middle_01_r
       parentName: hand_r
       position: {x: 0.005182897, y: 0.093132034, z: -0.008757359}
-      rotation: {x: -0.029990902, y: -0.41928467, z: 0.09348462, w: -0.9025306}
+      rotation: {x: -0.029990904, y: -0.4192847, z: 0.093484625, w: -0.90253067}
       scale: {x: 1.0000006, y: 0.99999994, z: 1.0000001}
     - name: middle_02_r
       parentName: middle_01_r
@@ -677,7 +682,7 @@ ModelImporter:
     - name: middle_03_r
       parentName: middle_02_r
       position: {x: -0.000000022078165, y: 0.024926398, z: -0.000000019438767}
-      rotation: {x: 0.054487724, y: 0.0000025683537, z: -0.0059555797, w: 0.99849665}
+      rotation: {x: 0.054487728, y: 0.000002568354, z: -0.00595558, w: 0.9984967}
       scale: {x: 1, y: 1.0000006, z: 1.0000002}
     - name: pinky_01_r
       parentName: hand_r
@@ -752,7 +757,7 @@ ModelImporter:
     - name: ball_l
       parentName: foot_l
       position: {x: -2.644138e-10, y: 0.11999259, z: -0.000000001504792}
-      rotation: {x: -0.29891232, y: -0.018288279, z: -0.0017413592, w: 0.9541037}
+      rotation: {x: -0.29891232, y: -0.01828828, z: -0.0017413592, w: 0.95410377}
       scale: {x: 1, y: 1.0000005, z: 0.99999994}
     - name: thigh_r
       parentName: pelvis
@@ -774,22 +779,17 @@ ModelImporter:
       position: {x: 2.644138e-10, y: 0.11999259, z: -0.000000001504792}
       rotation: {x: -0.2989123, y: 0.018288238, z: 0.0017413523, w: 0.95410377}
       scale: {x: 1, y: 1.0000002, z: 0.9999996}
-    - name: male_genericMesh
-      parentName: young brother(Clone)
-      position: {x: -0, y: 0, z: 0}
-      rotation: {x: 0, y: -0, z: -0, w: 1}
-      scale: {x: 1, y: 1, z: 1}
     - name: high-polyMesh
       parentName: young brother(Clone)
       position: {x: -0, y: 0, z: 0}
       rotation: {x: 0, y: -0, z: -0, w: 1}
       scale: {x: 1, y: 1, z: 1}
-    - name: eyebrow001Mesh
+    - name: male_casualsuit06Mesh
       parentName: young brother(Clone)
       position: {x: -0, y: 0, z: 0}
       rotation: {x: 0, y: -0, z: -0, w: 1}
       scale: {x: 1, y: 1, z: 1}
-    - name: male_casualsuit06Mesh
+    - name: male_genericMesh
       parentName: young brother(Clone)
       position: {x: -0, y: 0, z: 0}
       rotation: {x: 0, y: -0, z: -0, w: 1}

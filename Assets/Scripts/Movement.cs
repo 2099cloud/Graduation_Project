@@ -13,7 +13,7 @@ public class Movement : MonoBehaviour
     //Settings for playerInteractor();
     public Camera playerCamera;   // 玩家攝影機
     public float interactRange = 5f;   // 射線最大距離
-    public GameObject ObjectName, Point;
+    GameObject ObjectName, Point;
 
 
 
@@ -90,7 +90,7 @@ public class Movement : MonoBehaviour
             }
             else
             {
-                ObjectName.GetComponent<Text>().text = " ";
+                ObjectName.GetComponent<Text>().text = "";
                 Point.GetComponent<Image>().color = new Color(255, 255, 255);
             }
         }

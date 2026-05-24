@@ -26,13 +26,11 @@ VAR scene = 1
 掛斷
     -> Switch_scene2
 
-=== test ===
-人家是個他喵的測試用節點
-//->DONE
-->END
+
 
 === Switch_scene2 ===
 ~ scene = scene + 1
+//.# phone.prefab.smile
 //切換至場景 {scene}
 ->Scene2_start
 
