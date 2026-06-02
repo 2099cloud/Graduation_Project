@@ -135,8 +135,12 @@ namespace StarterAssets
         private void Start()
         {
             _cinemachineTargetYaw = CinemachineCameraTarget.transform.rotation.eulerAngles.y;
-            
+            // 原始代碼：
             _hasAnimator = TryGetComponent(out _animator);
+            // 更改後代碼：
+            /*_animator = GetComponentInChildren<Animator>();
+            _hasAnimator = _animator != null;*/
+
             _controller = GetComponent<CharacterController>();
             _input = GetComponent<StarterAssetsInputs>();
 #if ENABLE_INPUT_SYSTEM 
@@ -154,8 +158,20 @@ namespace StarterAssets
 
         private void Update()
         {
+            // 原始代碼：
             _hasAnimator = TryGetComponent(out _animator);
 
+            // 更改後代碼：
+            /*_animator = GetComponentInChildren<Animator>();
+            _hasAnimator = _animator != null;*/
+
+            // 更改後代碼：音效能夠順利停止
+            if (_animationBlend < 0.05f)
+            {
+                AudioSource audio = GetComponent<AudioSource>();
+                if (audio != null && audio.isPlaying) audio.Stop();
+            }
+            // =========================================================
             JumpAndGravity();
             GroundedCheck();
             Move();
@@ -376,7 +392,17 @@ namespace StarterAssets
                 if (FootstepAudioClips.Length > 0)
                 {
                     var index = Random.Range(0, FootstepAudioClips.Length);
-                    AudioSource.PlayClipAtPoint(FootstepAudioClips[index], transform.TransformPoint(_controller.center), FootstepAudioVolume);
+                    
+                    // ====== 修改後程式碼:音效可順利停止
+                    AudioSource audio = GetComponent<AudioSource>();
+                    if (audio != null)
+                    {
+                        audio.PlayOneShot(FootstepAudioClips[index], FootstepAudioVolume);
+                    }
+                    // ====================================================================
+                    
+                    //原始程式碼
+                    //AudioSource.PlayClipAtPoint(FootstepAudioClips[index], transform.TransformPoint(_controller.center), FootstepAudioVolume);
                 }
             }
         }

@@ -1,6 +1,7 @@
 === Scene2_start ===
 .# phone.prefab.smile
-.#Area Light.prefab.Yellow
+.#phone.TargetKnot="Test"
+//.#Area Light.prefab.Yellow
 .#Front door.TargetKnot="Answer_the_door"
 .#Task.text.應門
 
@@ -22,10 +23,25 @@
 
 === Answer_the_door===
 +[應門?]
-->DONE
+.#fade
+->Receive_package
 +[不理會]
 ->DONE
 
 === Receive_package ===
- 外送員站在門口，看起來有些焦慮。
+.# Main Character.position(-7.83, 0.345, 5.95)
+.# Main Character.rotation(0, 0, 0)
+ 外送員站在門口。
+ END
 -> DONE
+
+=== Test ===
+這是您的包裹，請您簽收
++[接收包裹]
+你收到了一個包裹，上面印有...
+.#Courier.SetActive.false
+-> DONE
+
+=== fade ===
+.#fade
+->DONE

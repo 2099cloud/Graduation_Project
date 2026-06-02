@@ -18,24 +18,19 @@ public class GameManager : MonoBehaviour
     public Transform choiceHolder;
 
     [Header("任務系統配置")]
-    [Tooltip("拖入畫面上負責顯示目前任務的 TMP 組件")]
     public TextMeshProUGUI taskText;
-    [Tooltip("任務 CSV 配置文件(放於 Resources 正下方，不含副檔名)")]
     public string taskCsvPath = "TaskManager";
 
     [Header("Timeline 配置")]
-    [Tooltip("場景中負責播放動畫的 Playable Director 組件")]
     public PlayableDirector globalDirector;
 
     [Header("數據與過渡配置")]
-    [Tooltip("全域 CSV 配置文件(放於 Resources 正下方，不含副檔名)")]
     public string csvResourcePath = "SceneConfig";
     public CanvasGroup fadeGroup;
     public float fadeDuration = 0.5f;
     public float bufferTime = 0.5f;
 
     [Header("動態生成生成點")]
-    [Tooltip("新物件生成時的父節點")]
     public Transform environmentHolder;
 
     private bool isWaitingForChoice = false;
@@ -44,16 +39,13 @@ public class GameManager : MonoBehaviour
 
     private string currentTargetObjectName = "";
 
-    // 紀錄任務原始狀態與彈出狀態的變數
     private string currentTaskTitle = "";
     private string currentTaskFullContent = "";
     private bool isTaskPopupOpen = false;
 
-    // 過渡狀態鎖與標籤暫存器
     private bool isTransitioning = false;
     private List<string> deferredTags = new List<string>();
 
-    // 用於記錄 taskText 還原用的原始變數
     private Vector3 originalPosition;
     private Vector2 originalPivot;
     private Vector2 originalAnchorMin;
@@ -109,7 +101,7 @@ public class GameManager : MonoBehaviour
             return;
         }
 
-        if (isWaitingForChoice || isTransitioning) return; // 換幕時不允許點擊互動
+        if (isWaitingForChoice || isTransitioning) return;
         if (Input.GetMouseButtonDown(0))
         {
             if (DetectObjectClick()) return;
@@ -117,13 +109,10 @@ public class GameManager : MonoBehaviour
         }
     }
 
-    // --- 故事核心邏輯 ---
-
     private void ContinueStory()
     {
         string text = "";
 
-        // 核心改動：使用 do-while 機制，如果當前行沒有實質文字，且故事還能繼續，就自動往下讀取，不卡滑鼠點擊
         do
         {
             if (!story.canContinue) break;
@@ -131,9 +120,13 @@ public class GameManager : MonoBehaviour
             text = story.Continue().Trim();
             HandleTags(story.currentTags);
 
+            // 如果被標籤截斷且需要淡出過渡，則終止 do-while 確保文字不會在全黑前直接跳出
+            if (isTransitioning) break;
+
         } while ((string.IsNullOrWhiteSpace(text) || text == ".") && story.canContinue);
 
-        // 處理最終要呈現的文字
+        if (isTransitioning) return;
+
         if (!string.IsNullOrWhiteSpace(text))
         {
             if (text == ".") dialogueText.text = "";
@@ -143,13 +136,20 @@ public class GameManager : MonoBehaviour
         }
         else
         {
-            // 如果跳出迴圈後 text 依然是空的或點號（通常是到了故事盡頭），則清空文字
             if (text == "" || text == ".") dialogueText.text = "";
         }
 
-        // 檢查是否到了需要顯示選項的階段
         if (!story.canContinue && story.currentChoices.Count > 0)
+        {
             StartCoroutine(ToggleChoiceUI(true));
+        }
+        else if (!story.canContinue && story.currentChoices.Count == 0)
+        {
+            if (dialogueText != null)
+            {
+                dialogueText.text = "";
+            }
+        }
     }
 
     IEnumerator OnChoiceSelected(int index)
@@ -161,22 +161,18 @@ public class GameManager : MonoBehaviour
         ContinueStory();
     }
 
-    // --- 場景更新邏輯 ---
-
     IEnumerator SceneTransition(int nextScene)
     {
         isWaitingForChoice = true;
-        isTransitioning = true; // 鎖定狀態，開始過渡
-        deferredTags.Clear();   // 清空舊的延遲標籤緩存
+        isTransitioning = true;
+        deferredTags.Clear();
 
         yield return new WaitForSeconds(bufferTime);
-        yield return Fade(1); // 直到畫面完全變黑
+        yield return Fade(1);
 
-        // 黑幕已蓋滿，這時候更新環境與生成 Prefab
         currentSceneID = nextScene;
         UpdateEnvironment(nextScene);
 
-        // 在全黑狀態下，補跑剛才被攔截下來的 Ink 標籤
         if (deferredTags.Count > 0)
         {
             ExecuteTagsReal(deferredTags);
@@ -186,12 +182,32 @@ public class GameManager : MonoBehaviour
         SetAllObjectsInteractable(true);
 
         yield return new WaitForSeconds(0.5f);
-        yield return Fade(0); // 淡出黑幕
+        yield return Fade(0);
 
-        isTransitioning = false; // 解除鎖定
+        isTransitioning = false;
         isWaitingForChoice = false;
 
         ContinueStory();
+    }
+
+    // ====================================================================
+    // 新增：處理單純由 #fade 標籤觸過渡的淡入淡出協程
+    // ====================================================================
+    IEnumerator ManualFadeSequence()
+    {
+        isWaitingForChoice = true;
+        isTransitioning = true;
+
+        yield return new WaitForSeconds(bufferTime);
+        yield return Fade(1); // 1. 先淡入至全黑
+
+        yield return new WaitForSeconds(0.5f); // 全黑緩衝時間
+        yield return Fade(0); // 2. 再淡出恢復畫面
+
+        isTransitioning = false;
+        isWaitingForChoice = false;
+
+        ContinueStory(); // 3. 恢復正常機制，秀出過渡後的後續台詞內容
     }
 
     void UpdateEnvironment(int sceneID)
@@ -200,7 +216,7 @@ public class GameManager : MonoBehaviour
 
         if (sceneConfigCsv == null)
         {
-            Debug.LogError("[GameManager] 在 Resources 下找不到全域 CSV 檔案！");
+            Debug.LogError("[GameManager] SceneConfig CSV Null!");
             return;
         }
 
@@ -230,19 +246,15 @@ public class GameManager : MonoBehaviour
                     allSceneObjects[id].gameObject.SetActive(active);
                     allSceneObjects[id].isInteractable = active;
                     if (!string.IsNullOrEmpty(knot)) allSceneObjects[id].targetKnot = knot;
-                    Debug.Log("場景 " + sceneID + ": 已更新靜態物件 " + id + " 狀態為 " + active);
                 }
             }
         }
     }
 
-    // --- 靈星物件動態修改處理器 (Ink 標籤系統) ---
-
     void HandleTags(List<string> tags)
     {
         if (tags == null || tags.Count == 0) return;
 
-        // 如果目前處於變黑的過渡期，先把標籤存起來，稍後再執行
         if (isTransitioning)
         {
             foreach (var tag in tags)
@@ -252,14 +264,34 @@ public class GameManager : MonoBehaviour
             return;
         }
 
-        // 如果不是在換幕期間，維持原樣直接執行
         ExecuteTagsReal(tags);
     }
 
-    // 將原本 HandleTags 的核心邏輯抽離出來，方便在全黑時呼叫
     void ExecuteTagsReal(List<string> tags)
     {
-        // 優先處理所有具有生成性質的 Prefab 標籤
+        // 新增：優先攔截並檢查是否有單純的 fade 標籤指令
+        foreach (string tag in tags)
+        {
+            if (tag.Trim() == "fade")
+            {
+                StartCoroutine(ManualFadeSequence());
+                return; // 直接進入淡入淡出協程流程，跳出當前執行
+            }
+        }
+
+        // ====================================================================
+        // 新增：攔截並處理物件 Active 狀態控制標籤
+        // 格式：(物件名稱).SetActive.true 或 (物件名稱).SetActive.false
+        // ====================================================================
+        foreach (string tag in tags)
+        {
+            string cleanTag = tag.Trim();
+            if (cleanTag.Contains(".SetActive."))
+            {
+                ParseAndSetObjectActive(cleanTag);
+            }
+        }
+
         foreach (string tag in tags)
         {
             string cleanTag = tag.Trim();
@@ -269,11 +301,11 @@ public class GameManager : MonoBehaviour
             }
         }
 
-        // 處理其他屬性控制標籤
         foreach (string tag in tags)
         {
             string cleanTag = tag.Trim();
             if (cleanTag.Contains(".prefab.")) continue;
+            if (cleanTag.Contains(".SetActive.")) continue; // 避免與後續的屬性解析衝突
 
             if (cleanTag == "InteractableObject.non-interactable")
             {
@@ -298,7 +330,57 @@ public class GameManager : MonoBehaviour
         }
     }
 
-    // --- 任務介面核心切換邏輯 ---
+    // ====================================================================
+    // 新增：解析 Ink 傳入的 SetActive 指令並尋找物件進行控制
+    // ====================================================================
+    void ParseAndSetObjectActive(string tag)
+    {
+        string[] split = tag.Split(new string[] { ".SetActive." }, System.StringSplitOptions.None);
+        if (split.Length < 2) return;
+
+        string objName = split[0].Trim();
+        string stateStr = split[1].Trim().ToLower();
+        bool targetState = (stateStr == "true");
+
+        GameObject targetGo = null;
+
+        // 優先從現有的場景互動字典中尋找物件
+        if (allSceneObjects.ContainsKey(objName) && allSceneObjects[objName] != null)
+        {
+            targetGo = allSceneObjects[objName].gameObject;
+        }
+        else
+        {
+            // 如果字典裡找不到（可能是非互動或目前處於隱藏狀態的物件），嘗試在環境節點下尋找
+            if (environmentHolder != null)
+            {
+                Transform foundTx = environmentHolder.Find(objName);
+                if (foundTx != null) targetGo = foundTx.gameObject;
+            }
+
+            // 最終防線：若還是找不到，嘗試全域搜尋（注意：GameObject.Find 找不到未激活的物件）
+            if (targetGo == null)
+            {
+                targetGo = GameObject.Find(objName);
+            }
+        }
+
+        if (targetGo != null)
+        {
+            targetGo.SetActive(targetState);
+
+            // 如果物件本身包含 InteractableObject 元件，同步切換它的可互動狀態
+            InteractableObject io = targetGo.GetComponent<InteractableObject>();
+            if (io != null)
+            {
+                io.isInteractable = targetState;
+            }
+        }
+        else
+        {
+            Debug.LogWarning($"[GameManager] SetActive 找不到目標物件: {objName}");
+        }
+    }
 
     public void OnTaskTextClicked()
     {
@@ -373,8 +455,6 @@ public class GameManager : MonoBehaviour
         isTaskPopupOpen = false;
     }
 
-    // --- 其餘擴充功能 ---
-
     void SetAllObjectsInteractable(bool state)
     {
         InteractableObject[] allObjects = FindObjectsOfType<InteractableObject>(true);
@@ -422,9 +502,42 @@ public class GameManager : MonoBehaviour
 
         currentTargetObjectName = objName;
 
-        if (allSceneObjects.ContainsKey(objName))
+        Vector3 oldLocalPosition = Vector3.zero;
+        Quaternion oldLocalRotation = Quaternion.identity;
+        Vector3 oldLocalScale = Vector3.one;
+        int oldLayer = 0;
+        string oldTag = "Untagged";
+        string oldTargetKnot = "";
+        Transform oldParentNode = environmentHolder;
+
+        GameObject oldGo = null;
+
+        if (allSceneObjects.ContainsKey(objName) && allSceneObjects[objName] != null)
         {
-            Destroy(allSceneObjects[objName].gameObject);
+            oldGo = allSceneObjects[objName].gameObject;
+            oldTargetKnot = allSceneObjects[objName].targetKnot;
+        }
+        else
+        {
+            Transform fallbackTx = environmentHolder.Find(objName);
+            if (fallbackTx != null)
+            {
+                oldGo = fallbackTx.gameObject;
+                var io = fallbackTx.GetComponent<InteractableObject>();
+                if (io != null) oldTargetKnot = io.targetKnot;
+            }
+        }
+
+        if (oldGo != null)
+        {
+            oldLocalPosition = oldGo.transform.localPosition;
+            oldLocalRotation = oldGo.transform.localRotation;
+            oldLocalScale = oldGo.transform.localScale;
+            oldLayer = oldGo.layer;
+            oldTag = oldGo.tag;
+            oldParentNode = oldGo.transform.parent;
+
+            Destroy(oldGo);
             allSceneObjects.Remove(objName);
         }
 
@@ -433,9 +546,36 @@ public class GameManager : MonoBehaviour
 
         if (newPrefab != null)
         {
-            GameObject spawnedInstance = Instantiate(newPrefab, environmentHolder);
+            GameObject spawnedInstance = Instantiate(newPrefab, oldParentNode);
             spawnedInstance.name = objName;
+
+            spawnedInstance.transform.localPosition = oldLocalPosition;
+            spawnedInstance.transform.localRotation = oldLocalRotation;
+            spawnedInstance.transform.localScale = oldLocalScale;
+            spawnedInstance.gameObject.layer = oldLayer;
+            spawnedInstance.gameObject.tag = oldTag;
+
+            foreach (Transform child in spawnedInstance.GetComponentsInChildren<Transform>(true))
+            {
+                child.gameObject.layer = oldLayer;
+            }
+
+            InteractableObject ioComponent = spawnedInstance.GetComponent<InteractableObject>();
+            if (ioComponent == null)
+            {
+                ioComponent = spawnedInstance.AddComponent<InteractableObject>();
+            }
+
+            if (!string.IsNullOrEmpty(oldTargetKnot))
+            {
+                ioComponent.targetKnot = oldTargetKnot;
+            }
+
             RefreshSceneObjectsDictionary();
+        }
+        else
+        {
+            Debug.LogError($"[GameManager] Prefab Path Error: Resources/{loadPath}");
         }
     }
 
@@ -444,7 +584,6 @@ public class GameManager : MonoBehaviour
         string targetObjectName = "";
         string commandContent = "";
 
-        // 檢查指令是否包含物件名稱前綴 (例如 phone.position)
         if (tag.Contains(".position") || tag.Contains(".rotation") || tag.Contains(".TargetKnot"))
         {
             int firstDotIndex = tag.IndexOf('.');
@@ -456,31 +595,71 @@ public class GameManager : MonoBehaviour
         }
         else
         {
-            // 回退機制：若不含點號前綴，則使用上一次記錄的 currentTargetObjectName
             targetObjectName = currentTargetObjectName;
             commandContent = tag;
         }
 
-        // 安全檢查：若找不對對應的場景物件則直接跳出
-        if (string.IsNullOrEmpty(targetObjectName) || !allSceneObjects.ContainsKey(targetObjectName)) return;
+        if (string.IsNullOrEmpty(targetObjectName)) return;
 
-        GameObject targetGo = allSceneObjects[targetObjectName].gameObject;
-        InteractableObject targetInteract = allSceneObjects[targetObjectName];
+        GameObject targetGo = null;
+
+        if (allSceneObjects.ContainsKey(targetObjectName) && allSceneObjects[targetObjectName] != null)
+        {
+            targetGo = allSceneObjects[targetObjectName].gameObject;
+        }
+        else
+        {
+            targetGo = GameObject.Find(targetObjectName);
+        }
+
+        if (targetGo == null)
+        {
+            Debug.LogWarning($"[GameManager] Cannot find target object named: {targetObjectName} in scene.");
+            return;
+        }
 
         if (commandContent.StartsWith("position"))
         {
-            targetGo.transform.localPosition = ExtractVector3(commandContent);
+            Vector3 targetPosition = ExtractVector3(commandContent);
+            CharacterController cc = targetGo.GetComponent<CharacterController>();
+
+            if (cc != null)
+            {
+                cc.enabled = false;
+                targetGo.transform.position = targetPosition;
+                cc.enabled = true;
+            }
+            else
+            {
+                targetGo.transform.position = targetPosition;
+            }
         }
         else if (commandContent.StartsWith("rotation"))
         {
-            targetGo.transform.localEulerAngles = ExtractVector3(commandContent);
+            Vector3 targetRotation = ExtractVector3(commandContent);
+            CharacterController cc = targetGo.GetComponent<CharacterController>();
+
+            if (cc != null)
+            {
+                cc.enabled = false;
+                targetGo.transform.eulerAngles = targetRotation;
+                cc.enabled = true;
+            }
+            else
+            {
+                targetGo.transform.eulerAngles = targetRotation;
+            }
         }
         else if (commandContent.StartsWith("TargetKnot"))
         {
-            string[] parts = commandContent.Split('=');
-            if (parts.Length >= 2)
+            InteractableObject targetInteract = targetGo.GetComponent<InteractableObject>();
+            if (targetInteract != null)
             {
-                targetInteract.targetKnot = parts[1].Replace("\"", "").Trim();
+                string[] parts = commandContent.Split('=');
+                if (parts.Length >= 2)
+                {
+                    targetInteract.targetKnot = parts[1].Replace("\"", "").Trim();
+                }
             }
         }
     }
@@ -493,9 +672,12 @@ public class GameManager : MonoBehaviour
         string objName = split[0].Trim();
         string materialName = split[1].Trim();
 
-        if (allSceneObjects.ContainsKey(objName))
+        GameObject targetGo = null;
+        if (allSceneObjects.ContainsKey(objName)) targetGo = allSceneObjects[objName].gameObject;
+        else targetGo = GameObject.Find(objName);
+
+        if (targetGo != null)
         {
-            GameObject targetGo = allSceneObjects[objName].gameObject;
             Material newMat = Resources.Load<Material>("Prefabs/" + objName + "/Materials/" + materialName);
             if (newMat != null)
             {
@@ -530,7 +712,10 @@ public class GameManager : MonoBehaviour
             string[] values = content.Split(',');
             return new Vector3(float.Parse(values[0].Trim()), float.Parse(values[1].Trim()), float.Parse(values[2].Trim()));
         }
-        catch { return Vector3.zero; }
+        catch
+        {
+            return Vector3.zero;
+        }
     }
 
     void RefreshSceneObjectsDictionary()

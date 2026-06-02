@@ -68,12 +68,22 @@ namespace StarterAssets
 
 		private void OnApplicationFocus(bool hasFocus)
 		{
-			SetCursorState(cursorLocked);
+			//官方原寫法
+			//SetCursorState(cursorLocked);
+
+			//修改後 游標顯現
+			Cursor.lockState = CursorLockMode.None;
+			Cursor.visible = true;
 		}
 
 		private void SetCursorState(bool newState)
 		{
-			Cursor.lockState = newState ? CursorLockMode.Locked : CursorLockMode.None;
+			//官方原寫法
+			//Cursor.lockState = newState ? CursorLockMode.Locked : CursorLockMode.None;
+
+			// 強制解除所有鎖定狀態
+			Cursor.lockState = CursorLockMode.None;
+			Cursor.visible = true;
 		}
 	}
 	
