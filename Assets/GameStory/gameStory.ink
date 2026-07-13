@@ -4,7 +4,12 @@ VAR scene = 1
 === PickUpthePhone ===
 要是當初，我能更早發現就好了...
 
-+ [接聽] 
++{not test} [接聽] 
+    # PhoneAction: PickUp
+    # ChangePhoneImage: Incoming_Call
+    -> Switch_scene2
+    
++{test}[點擊測試物件後接聽] 
     # PhoneAction: PickUp
     # ChangePhoneImage: Incoming_Call
     -> Switch_scene2
@@ -42,3 +47,9 @@ VAR scene = 1
 # rotation(0, 180, 0)
 # TargetKnot="Answer_the_call"
 ->END
+
+=== test ===
+測試
+END
+->DONE
+

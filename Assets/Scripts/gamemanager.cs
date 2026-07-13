@@ -389,15 +389,18 @@ public class GameManager : MonoBehaviour
 
         isTaskPopupOpen = true;
 
+        // 1. fadeGroup 單純當作背景半透明遮罩
         if (fadeGroup != null)
         {
             fadeGroup.alpha = 0.65f;
             fadeGroup.blocksRaycasts = true;
         }
 
-        if (taskText != null && fadeGroup != null)
+        if (taskText != null)
         {
-            taskText.transform.SetParent(fadeGroup.transform, true);
+            // 【修改】：不再移入 fadeGroup 作為子物件，保持在 originalParent 下
+            // 為了防止被半透明的 fadeGroup 遮擋，將文字移到原父物件的最上層渲染
+            taskText.transform.SetAsLastSibling();
 
             RectTransform rect = taskText.rectTransform;
             rect.anchorMin = new Vector2(0.5f, 0.5f);
@@ -406,10 +409,13 @@ public class GameManager : MonoBehaviour
             rect.anchoredPosition = Vector2.zero;
 
             taskText.fontSize = originalFontSize * 1.5f;
+
+            // 【修改】：這裡把最外層的 Text 色調設為純白不透明，確保內容是白色的
             taskText.color = Color.white;
             taskText.alignment = TextAlignmentOptions.Center;
 
-            taskText.text = "<color=#FFCC00><b>" + currentTaskTitle + "</b></color>\n\n<size=80%>" + currentTaskFullContent + "</size>";
+            // 【修改】：標題加上不透明的黑底框或是純黑強調，內容保持純白 (使用不帶 Alpha 的 #FFFFFF 確保不透明)
+            taskText.text = "<color=#000000><b>" + currentTaskTitle + "</b></color>\n\n<color=#FFFFFF><size=80%>" + currentTaskFullContent + "</size></color>";
         }
     }
 
@@ -425,8 +431,7 @@ public class GameManager : MonoBehaviour
 
         if (taskText != null)
         {
-            taskText.transform.SetParent(originalParent, true);
-
+            // 【修改】：因為點開時沒改 Parent，這裡也移除原本的 SetParent 恢復原位即可
             RectTransform rect = taskText.rectTransform;
             rect.anchorMin = originalAnchorMin;
             rect.anchorMax = originalAnchorMax;
