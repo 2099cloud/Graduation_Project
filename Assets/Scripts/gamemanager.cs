@@ -33,6 +33,14 @@ public class GameManager : MonoBehaviour
     [Header("動態生成生成點")]
     public Transform environmentHolder;
 
+    // ====================================================================
+    // 新增：相機暫停與控制配置 (支援自訂相機腳本)
+    // ====================================================================
+    [Header("相機暫停配置")]
+    [Tooltip("如果你的相機有掛載自訂的移動/旋轉控制腳本，請拖入此欄位。若留空，系統會自動搜尋主相機上的所有行為組件。")]
+    public MonoBehaviour[] cameraControlScripts;
+    // ====================================================================
+
     private bool isWaitingForChoice = false;
     private Dictionary<string, InteractableObject> allSceneObjects = new Dictionary<string, InteractableObject>();
     private int currentSceneID = 0;
@@ -76,6 +84,29 @@ public class GameManager : MonoBehaviour
             btn.onClick.RemoveAllListeners();
             btn.onClick.AddListener(OnTaskTextClicked);
         }
+
+        // ====================================================================
+        // 新增：自動初始化相機腳本尋找
+        // ====================================================================
+        if (cameraControlScripts == null || cameraControlScripts.Length == 0)
+        {
+            Camera mainCam = Camera.main;
+            if (mainCam != null)
+            {
+                // 自動抓取主相機上「非 Unity 內建」的所有自訂控制腳本
+                List<MonoBehaviour> foundScripts = new List<MonoBehaviour>();
+                foreach (var script in mainCam.GetComponents<MonoBehaviour>())
+                {
+                    // 排除 AudioListener、Camera 等內建非自訂控制組件
+                    if (script != null && script.GetType().Namespace != "UnityEngine")
+                    {
+                        foundScripts.Add(script);
+                    }
+                }
+                cameraControlScripts = foundScripts.ToArray();
+            }
+        }
+        // ====================================================================
     }
 
     void Start()
@@ -92,6 +123,21 @@ public class GameManager : MonoBehaviour
 
     void Update()
     {
+        // ====================================================================
+        // 新增：即時監測 fadeGroup 顯示狀態，並自動鎖定/解鎖相機
+        // ====================================================================
+        bool shouldDisableCamera = false;
+
+        if (fadeGroup != null)
+        {
+            // 只要 fadeGroup 的不透明度大於 0 (正在顯示或正在過渡)，就判定需要鎖定相機
+            shouldDisableCamera = fadeGroup.alpha > 0.01f;
+        }
+
+        // 根據狀態開關相機控制腳本
+        SetCameraControlsActive(!shouldDisableCamera);
+        // ====================================================================
+
         if (isTaskPopupOpen)
         {
             if (Input.GetMouseButtonDown(0))
@@ -108,6 +154,23 @@ public class GameManager : MonoBehaviour
             if (story.canContinue) ContinueStory();
         }
     }
+
+    // ====================================================================
+    // 新增：統一開關相機控制腳本的輔助函式
+    // ====================================================================
+    private void SetCameraControlsActive(bool isActive)
+    {
+        if (cameraControlScripts == null) return;
+
+        foreach (var script in cameraControlScripts)
+        {
+            if (script != null && script.enabled != isActive)
+            {
+                script.enabled = isActive;
+            }
+        }
+    }
+    // ====================================================================
 
     private void ContinueStory()
     {
@@ -190,9 +253,6 @@ public class GameManager : MonoBehaviour
         ContinueStory();
     }
 
-    // ====================================================================
-    // 新增：處理單純由 #fade 標籤觸過渡的淡入淡出協程
-    // ====================================================================
     IEnumerator ManualFadeSequence()
     {
         isWaitingForChoice = true;
@@ -269,20 +329,15 @@ public class GameManager : MonoBehaviour
 
     void ExecuteTagsReal(List<string> tags)
     {
-        // 新增：優先攔截並檢查是否有單純的 fade 標籤指令
         foreach (string tag in tags)
         {
             if (tag.Trim() == "fade")
             {
                 StartCoroutine(ManualFadeSequence());
-                return; // 直接進入淡入淡出協程流程，跳出當前執行
+                return;
             }
         }
 
-        // ====================================================================
-        // 新增：攔截並處理物件 Active 狀態控制標籤
-        // 格式：(物件名稱).SetActive.true 或 (物件名稱).SetActive.false
-        // ====================================================================
         foreach (string tag in tags)
         {
             string cleanTag = tag.Trim();
@@ -305,7 +360,7 @@ public class GameManager : MonoBehaviour
         {
             string cleanTag = tag.Trim();
             if (cleanTag.Contains(".prefab.")) continue;
-            if (cleanTag.Contains(".SetActive.")) continue; // 避免與後續的屬性解析衝突
+            if (cleanTag.Contains(".SetActive.")) continue;
 
             if (cleanTag == "InteractableObject.non-interactable")
             {
@@ -330,9 +385,6 @@ public class GameManager : MonoBehaviour
         }
     }
 
-    // ====================================================================
-    // 新增：解析 Ink 傳入的 SetActive 指令並尋找物件進行控制
-    // ====================================================================
     void ParseAndSetObjectActive(string tag)
     {
         string[] split = tag.Split(new string[] { ".SetActive." }, System.StringSplitOptions.None);
@@ -344,21 +396,18 @@ public class GameManager : MonoBehaviour
 
         GameObject targetGo = null;
 
-        // 優先從現有的場景互動字典中尋找物件
         if (allSceneObjects.ContainsKey(objName) && allSceneObjects[objName] != null)
         {
             targetGo = allSceneObjects[objName].gameObject;
         }
         else
         {
-            // 如果字典裡找不到（可能是非互動或目前處於隱藏狀態的物件），嘗試在環境節點下尋找
             if (environmentHolder != null)
             {
                 Transform foundTx = environmentHolder.Find(objName);
                 if (foundTx != null) targetGo = foundTx.gameObject;
             }
 
-            // 最終防線：若還是找不到，嘗試全域搜尋（注意：GameObject.Find 找不到未激活的物件）
             if (targetGo == null)
             {
                 targetGo = GameObject.Find(objName);
@@ -369,7 +418,6 @@ public class GameManager : MonoBehaviour
         {
             targetGo.SetActive(targetState);
 
-            // 如果物件本身包含 InteractableObject 元件，同步切換它的可互動狀態
             InteractableObject io = targetGo.GetComponent<InteractableObject>();
             if (io != null)
             {
@@ -389,7 +437,6 @@ public class GameManager : MonoBehaviour
 
         isTaskPopupOpen = true;
 
-        // 1. fadeGroup 單純當作背景半透明遮罩
         if (fadeGroup != null)
         {
             fadeGroup.alpha = 0.65f;
@@ -398,8 +445,6 @@ public class GameManager : MonoBehaviour
 
         if (taskText != null)
         {
-            // 【修改】：不再移入 fadeGroup 作為子物件，保持在 originalParent 下
-            // 為了防止被半透明的 fadeGroup 遮擋，將文字移到原父物件的最上層渲染
             taskText.transform.SetAsLastSibling();
 
             RectTransform rect = taskText.rectTransform;
@@ -410,11 +455,9 @@ public class GameManager : MonoBehaviour
 
             taskText.fontSize = originalFontSize * 1.5f;
 
-            // 【修改】：這裡把最外層的 Text 色調設為純白不透明，確保內容是白色的
             taskText.color = Color.white;
             taskText.alignment = TextAlignmentOptions.Center;
 
-            // 【修改】：標題加上不透明的黑底框或是純黑強調，內容保持純白 (使用不帶 Alpha 的 #FFFFFF 確保不透明)
             taskText.text = "<color=#000000><b>" + currentTaskTitle + "</b></color>\n\n<color=#FFFFFF><size=80%>" + currentTaskFullContent + "</size></color>";
         }
     }
@@ -431,7 +474,6 @@ public class GameManager : MonoBehaviour
 
         if (taskText != null)
         {
-            // 【修改】：因為點開時沒改 Parent，這裡也移除原本的 SetParent 恢復原位即可
             RectTransform rect = taskText.rectTransform;
             rect.anchorMin = originalAnchorMin;
             rect.anchorMax = originalAnchorMax;
