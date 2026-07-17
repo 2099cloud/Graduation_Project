@@ -19,7 +19,8 @@ public class ObjectInspector : MonoBehaviour
     public float minScale = 0.5f;
     public float maxScale = 2.5f;
 
-    [Header("Inspect Position")]
+    [Header("Inspect Position (Isolated)")]
+    public Vector3 isolatedSpawnCenter = new Vector3(0f, -1000f, 0f);
     public float inspectDistance = 1.5f;
     public Vector3 positionOffset = Vector3.zero;
 
@@ -69,12 +70,12 @@ public class ObjectInspector : MonoBehaviour
 
         CreateInspectCameraURP(mainCam);
 
-        Vector3 targetPosition = mainCam.transform.position + (mainCam.transform.forward * inspectDistance);
-        targetPosition += mainCam.transform.right * positionOffset.x;
-        targetPosition += mainCam.transform.up * positionOffset.y;
-        targetPosition += mainCam.transform.forward * positionOffset.z;
+        Vector3 targetPosition = inspectCamera.transform.position + (inspectCamera.transform.forward * inspectDistance);
+        targetPosition += inspectCamera.transform.right * positionOffset.x;
+        targetPosition += inspectCamera.transform.up * positionOffset.y;
+        targetPosition += inspectCamera.transform.forward * positionOffset.z;
 
-        Quaternion targetRotation = Quaternion.LookRotation(mainCam.transform.forward, mainCam.transform.up);
+        Quaternion targetRotation = Quaternion.LookRotation(inspectCamera.transform.forward, inspectCamera.transform.up);
 
         clonedObject = Instantiate(targetPrefab, targetPosition, targetRotation);
         clonedObject.transform.SetParent(this.transform);
@@ -108,9 +109,9 @@ public class ObjectInspector : MonoBehaviour
         if (inspectCamera != null) return;
 
         GameObject camGo = new GameObject("InspectCamera");
-        camGo.transform.SetParent(mainCam.transform);
-        camGo.transform.localPosition = Vector3.zero;
-        camGo.transform.localRotation = Quaternion.identity;
+
+        camGo.transform.position = isolatedSpawnCenter;
+        camGo.transform.rotation = mainCam.transform.rotation;
 
         inspectCamera = camGo.AddComponent<Camera>();
         inspectCamera.cullingMask = inspectLayer.value;
@@ -156,15 +157,15 @@ public class ObjectInspector : MonoBehaviour
             return;
         }
 
-        if (clonedObject == null) return;
+        if (clonedObject == null || inspectCamera == null) return;
 
         if (Input.GetMouseButton(0))
         {
             float rotX = Input.GetAxis("Mouse X") * rotateSpeed;
             float rotY = Input.GetAxis("Mouse Y") * rotateSpeed;
 
-            clonedObject.transform.Rotate(Camera.main.transform.up, -rotX, Space.World);
-            clonedObject.transform.Rotate(Camera.main.transform.right, rotY, Space.World);
+            clonedObject.transform.Rotate(inspectCamera.transform.up, -rotX, Space.World);
+            clonedObject.transform.Rotate(inspectCamera.transform.right, rotY, Space.World);
         }
 
         float scroll = Input.GetAxis("Mouse ScrollWheel");
@@ -177,7 +178,7 @@ public class ObjectInspector : MonoBehaviour
 
         if (Input.GetMouseButtonDown(0))
         {
-            Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
+            Ray ray = inspectCamera.ScreenPointToRay(Input.mousePosition);
             if (Physics.Raycast(ray, out RaycastHit hit, 100f, inspectLayer))
             {
                 InspectableInfo mainInfo = clonedObject.GetComponent<InspectableInfo>();
