@@ -37,6 +37,8 @@ VAR scene = 1
 ~ scene = scene + 1
 //.# phone.prefab.smile
 //切換至場景 {scene}
+.#Skybox.Dawn
+.#LightingData_Day
 ->Scene2_start
 
 
@@ -53,3 +55,9 @@ VAR scene = 1
 END
 ->DONE
 
+=== intro_story ===
+# DirectorObject.timeline.Timeline_IntroScene
+這是一段開場對白，當進入這個節點時，會自動去 Resources 載入並播放特定的 Timeline。
+NPC點點頭說道：「你終於來了。」
+註：DirectorObject 是你場景上掛載 PlayableDirector 的物件名稱，Timeline_IntroScene 則是對應的 Timeline 資源檔名。
+-> DONE

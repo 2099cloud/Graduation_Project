@@ -5,9 +5,28 @@ using UnityEngine.UI;
 using Ink.Runtime;
 using TMPro;
 using UnityEngine.Playables;
+using UnityEngine.Timeline;
+using UnityEngine.SceneManagement;
+using System.Linq;
 
 public class GameManager : MonoBehaviour
 {
+    // 使用 GameLightingPreset 避開所有 Unity C++ 原生內部類別名稱
+    [System.Serializable]
+    public struct GameLightingPreset
+    {
+        public string configName;       // Ink 標籤名稱，例如 "LightingData_Night" 或 "LightingData_Day"
+        public Color lightColor;        // 太陽光顏色
+        public float lightIntensity;    // 太陽光強度
+        public Vector3 lightRotation;   // 太陽光角度 (Euler Angles)
+        public Color ambientLightColor; // 環境光顏色 (RenderSettings.ambientLight)
+        public string skyboxImageName;  // Skybox 圖片名稱
+
+        [Header("Area Light 配置")]
+        public Color areaLightColor;    // Area Light 顏色
+        public float areaLightIntensity;// Area Light 強度
+    }
+
     [Header("Ink 配置")]
     public TextAsset inkJsonAsset;
     private Story story;
@@ -24,6 +43,47 @@ public class GameManager : MonoBehaviour
     [Header("Timeline 配置")]
     public PlayableDirector globalDirector;
 
+    [Header("混合光照 (Mixed Lighting) 配置")]
+    [Tooltip("請拖入主要的平行光 (Directional Light)")]
+    public Light mainDirectionalLight;
+    [Tooltip("請拖入區域光 (Area Light)")]
+    public Light mainAreaLight;
+    [Tooltip("遊戲啟動時預設載入的光照配置名稱 (例如：LightingData_Night)")]
+    public string defaultLightingConfigName = "LightingData_Night";
+
+    [Header("光照 Preset 列表")]
+    public List<GameLightingPreset> lightingPresets = new List<GameLightingPreset>
+    {
+        new GameLightingPreset
+        {
+            configName = "LightingData_Day",
+            lightColor = new Color(1.0f, 0.95f, 0.84f),
+            lightIntensity = 1.2f,
+            lightRotation = new Vector3(50f, -30f, 0f),
+            ambientLightColor = new Color(0.6f, 0.6f, 0.65f),
+            skyboxImageName = "Day",
+            areaLightColor = new Color(1.0f, 0.95f, 0.85f),
+            areaLightIntensity = 1.0f
+        },
+        new GameLightingPreset
+        {
+            configName = "LightingData_Night",
+            lightColor = new Color(0.2f, 0.3f, 0.5f),
+            lightIntensity = 0.2f,
+            lightRotation = new Vector3(20f, -150f, 0f),
+            ambientLightColor = new Color(0.05f, 0.08f, 0.15f),
+            skyboxImageName = "Night",
+            areaLightColor = new Color(0.1f, 0.15f, 0.3f),
+            areaLightIntensity = 0.2f
+        }
+    };
+
+    [Header("Skybox 配置")]
+    [Tooltip("請拖入主要的 Skybox 材質球")]
+    public Material skyboxMaterial;
+    [Tooltip("圖片在 Resources 資料夾中的相對路徑，例如：Skyboxes/")]
+    public string skyboxResourcesPath = "Skyboxes/";
+
     [Header("數據與過渡配置")]
     public string csvResourcePath = "SceneConfig";
     public CanvasGroup fadeGroup;
@@ -33,24 +93,18 @@ public class GameManager : MonoBehaviour
     [Header("動態生成生成點")]
     public Transform environmentHolder;
 
-    // ====================================================================
-    // 新增：相機暫停與控制配置 (支援自訂相機腳本)
-    // ====================================================================
-    [Header("相機暫停配置")]
-    [Tooltip("如果你的相機有掛載自訂的移動/旋轉控制腳本，請拖入此欄位。若留空，系統會自動搜尋主相機上的所有行為組件。")]
+    [Header("相機與物理控制配置")]
+    [Tooltip("如果你的相機有掛載自訂的移動/旋轉控制腳本，請拖入此欄位。")]
     public MonoBehaviour[] cameraControlScripts;
-    // ====================================================================
 
     private bool isWaitingForChoice = false;
     private Dictionary<string, InteractableObject> allSceneObjects = new Dictionary<string, InteractableObject>();
     private int currentSceneID = 0;
 
     private string currentTargetObjectName = "";
-
     private string currentTaskTitle = "";
     private string currentTaskFullContent = "";
     private bool isTaskPopupOpen = false;
-
     private bool isTransitioning = false;
     private List<string> deferredTags = new List<string>();
 
@@ -63,13 +117,24 @@ public class GameManager : MonoBehaviour
     private Color originalColor;
     private Transform originalParent;
 
+    private bool isWaitingForTimelineClick = false;
+    private bool isTimelineCutsceneActive = false;
+
+    // 用於在劇情中暫時關閉組件，結束後復原
+    private List<CharacterController> disabledControllers = new List<CharacterController>();
+    private List<MonoBehaviour> disabledCinemachineCameras = new List<MonoBehaviour>();
+    private List<MonoBehaviour> disabledPlayerControlScripts = new List<MonoBehaviour>();
+
+    // 用於儲存並復原 Animator 的 Root Motion 狀態
+    private Dictionary<Animator, bool> originalRootMotionStates = new Dictionary<Animator, bool>();
+
     void Awake()
     {
         RefreshSceneObjectsDictionary();
 
         if (taskText != null)
         {
-            RectTransform rect = taskText.rectTransform;
+            var rect = taskText.rectTransform;
             originalPosition = rect.localPosition;
             originalPivot = rect.pivot;
             originalAnchorMin = rect.anchorMin;
@@ -85,19 +150,14 @@ public class GameManager : MonoBehaviour
             btn.onClick.AddListener(OnTaskTextClicked);
         }
 
-        // ====================================================================
-        // 新增：自動初始化相機腳本尋找
-        // ====================================================================
         if (cameraControlScripts == null || cameraControlScripts.Length == 0)
         {
             Camera mainCam = Camera.main;
             if (mainCam != null)
             {
-                // 自動抓取主相機上「非 Unity 內建」的所有自訂控制腳本
                 List<MonoBehaviour> foundScripts = new List<MonoBehaviour>();
                 foreach (var script in mainCam.GetComponents<MonoBehaviour>())
                 {
-                    // 排除 AudioListener、Camera 等內建非自訂控制組件
                     if (script != null && script.GetType().Namespace != "UnityEngine")
                     {
                         foundScripts.Add(script);
@@ -106,11 +166,16 @@ public class GameManager : MonoBehaviour
                 cameraControlScripts = foundScripts.ToArray();
             }
         }
-        // ====================================================================
     }
 
     void Start()
     {
+        // 1. 遊戲啟動時直接套用預設光照配置
+        if (!string.IsNullOrEmpty(defaultLightingConfigName))
+        {
+            ParseAndSwapLightingData(defaultLightingConfigName);
+        }
+
         if (!inkJsonAsset) return;
         story = new Story(inkJsonAsset.text);
 
@@ -123,20 +188,19 @@ public class GameManager : MonoBehaviour
 
     void Update()
     {
-        // ====================================================================
-        // 新增：即時監測 fadeGroup 顯示狀態，並自動鎖定/解鎖相機
-        // ====================================================================
         bool shouldDisableCamera = false;
 
         if (fadeGroup != null)
         {
-            // 只要 fadeGroup 的不透明度大於 0 (正在顯示或正在過渡)，就判定需要鎖定相機
             shouldDisableCamera = fadeGroup.alpha > 0.01f;
         }
 
-        // 根據狀態開關相機控制腳本
+        if (isTimelineCutsceneActive)
+        {
+            shouldDisableCamera = true;
+        }
+
         SetCameraControlsActive(!shouldDisableCamera);
-        // ====================================================================
 
         if (isTaskPopupOpen)
         {
@@ -148,20 +212,33 @@ public class GameManager : MonoBehaviour
         }
 
         if (isWaitingForChoice || isTransitioning) return;
-        if (Input.GetMouseButtonDown(0))
+
+        if (Input.GetMouseButtonDown(0) || Input.GetKeyDown(KeyCode.Space))
         {
-            if (DetectObjectClick()) return;
-            if (story.canContinue) ContinueStory();
+            if (isTimelineCutsceneActive)
+            {
+                if (isWaitingForTimelineClick)
+                {
+                    AdvanceTimelineAndDialogue();
+                }
+                return;
+            }
+
+            if (Input.GetMouseButtonDown(0))
+            {
+                if (DetectObjectClick()) return;
+            }
+
+            if (story.canContinue)
+            {
+                ContinueStory();
+            }
         }
     }
 
-    // ====================================================================
-    // 新增：統一開關相機控制腳本的輔助函式
-    // ====================================================================
     private void SetCameraControlsActive(bool isActive)
     {
         if (cameraControlScripts == null) return;
-
         foreach (var script in cameraControlScripts)
         {
             if (script != null && script.enabled != isActive)
@@ -170,12 +247,142 @@ public class GameManager : MonoBehaviour
             }
         }
     }
-    // ====================================================================
+
+    private void SetTimelineSystemOverride(bool overrideActive)
+    {
+        if (overrideActive)
+        {
+            disabledControllers.Clear();
+            CharacterController[] controllers = FindObjectsOfType<CharacterController>();
+            foreach (var cc in controllers)
+            {
+                if (cc != null && cc.enabled)
+                {
+                    cc.enabled = false;
+                    disabledControllers.Add(cc);
+                }
+            }
+
+            disabledPlayerControlScripts.Clear();
+
+            originalRootMotionStates.Clear();
+            Animator[] animators = FindObjectsOfType<Animator>();
+            foreach (var anim in animators)
+            {
+                if (anim != null)
+                {
+                    originalRootMotionStates[anim] = anim.applyRootMotion;
+                    anim.applyRootMotion = true;
+                }
+            }
+
+            MonoBehaviour[] allScripts = FindObjectsOfType<MonoBehaviour>();
+            foreach (var script in allScripts)
+            {
+                if (script != null && script.enabled)
+                {
+                    string typeName = script.GetType().Name;
+                    if (typeName.Contains("ThirdPersonController") || typeName.Contains("PlayerInput") || typeName.Contains("StarterAssetsInputs"))
+                    {
+                        script.enabled = false;
+                        disabledPlayerControlScripts.Add(script);
+                    }
+
+                    if (typeName.Contains("CinemachineFreeLook") || typeName.Contains("CinemachineVirtualCamera"))
+                    {
+                        if (globalDirector != null && script.transform.root != globalDirector.transform.root)
+                        {
+                            script.enabled = false;
+                            disabledCinemachineCameras.Add(script);
+                        }
+                    }
+                }
+            }
+        }
+        else
+        {
+            Physics.SyncTransforms();
+
+            foreach (var cc in disabledControllers)
+            {
+                if (cc != null) cc.enabled = true;
+            }
+            disabledControllers.Clear();
+
+            foreach (var cam in disabledCinemachineCameras)
+            {
+                if (cam != null) cam.enabled = true;
+            }
+            disabledCinemachineCameras.Clear();
+
+            foreach (var script in disabledPlayerControlScripts)
+            {
+                if (script != null) script.enabled = true;
+            }
+            disabledPlayerControlScripts.Clear();
+
+            foreach (var kvp in originalRootMotionStates)
+            {
+                if (kvp.Key != null)
+                {
+                    kvp.Key.applyRootMotion = kvp.Value;
+                }
+            }
+            originalRootMotionStates.Clear();
+        }
+    }
+
+    public void OnTimelinePauseSignalReached()
+    {
+        if (globalDirector != null)
+        {
+            globalDirector.Pause();
+        }
+        isWaitingForTimelineClick = true;
+    }
+
+    private void AdvanceTimelineAndDialogue()
+    {
+        isWaitingForTimelineClick = false;
+
+        if (story.canContinue)
+        {
+            ContinueStory();
+            if (globalDirector != null && globalDirector.state == PlayState.Paused)
+            {
+                globalDirector.Play();
+            }
+        }
+        else
+        {
+            CheckAndEndCutscene();
+        }
+    }
+
+    private void CheckAndEndCutscene()
+    {
+        if (!story.canContinue && story.currentChoices.Count == 0)
+        {
+            if (isTimelineCutsceneActive)
+            {
+                isTimelineCutsceneActive = false;
+                SetTimelineSystemOverride(false);
+            }
+
+            if (globalDirector != null)
+            {
+                globalDirector.Stop();
+            }
+            if (dialogueText != null)
+            {
+                dialogueText.text = "";
+            }
+        }
+    }
 
     private void ContinueStory()
     {
         string text = "";
-
         do
         {
             if (!story.canContinue) break;
@@ -183,7 +390,6 @@ public class GameManager : MonoBehaviour
             text = story.Continue().Trim();
             HandleTags(story.currentTags);
 
-            // 如果被標籤截斷且需要淡出過渡，則終止 do-while 確保文字不會在全黑前直接跳出
             if (isTransitioning) break;
 
         } while ((string.IsNullOrWhiteSpace(text) || text == ".") && story.canContinue);
@@ -208,9 +414,9 @@ public class GameManager : MonoBehaviour
         }
         else if (!story.canContinue && story.currentChoices.Count == 0)
         {
-            if (dialogueText != null)
+            if (!isTimelineCutsceneActive)
             {
-                dialogueText.text = "";
+                CheckAndEndCutscene();
             }
         }
     }
@@ -221,7 +427,15 @@ public class GameManager : MonoBehaviour
         ClearChoices();
         yield return new WaitForSeconds(bufferTime);
         isWaitingForChoice = false;
-        ContinueStory();
+
+        if (isWaitingForTimelineClick)
+        {
+            AdvanceTimelineAndDialogue();
+        }
+        else
+        {
+            ContinueStory();
+        }
     }
 
     IEnumerator SceneTransition(int nextScene)
@@ -259,26 +473,21 @@ public class GameManager : MonoBehaviour
         isTransitioning = true;
 
         yield return new WaitForSeconds(bufferTime);
-        yield return Fade(1); // 1. 先淡入至全黑
+        yield return Fade(1);
 
-        yield return new WaitForSeconds(0.5f); // 全黑緩衝時間
-        yield return Fade(0); // 2. 再淡出恢復畫面
+        yield return new WaitForSeconds(0.5f);
+        yield return Fade(0);
 
         isTransitioning = false;
         isWaitingForChoice = false;
 
-        ContinueStory(); // 3. 恢復正常機制，秀出過渡後的後續台詞內容
+        ContinueStory();
     }
 
     void UpdateEnvironment(int sceneID)
     {
         TextAsset sceneConfigCsv = Resources.Load<TextAsset>(csvResourcePath);
-
-        if (sceneConfigCsv == null)
-        {
-            Debug.LogError("[GameManager] SceneConfig CSV Null!");
-            return;
-        }
+        if (sceneConfigCsv == null) return;
 
         string csvText = sceneConfigCsv.text.Replace("\r", "");
         string[] lines = csvText.Split('\n');
@@ -362,7 +571,19 @@ public class GameManager : MonoBehaviour
             if (cleanTag.Contains(".prefab.")) continue;
             if (cleanTag.Contains(".SetActive.")) continue;
 
-            if (cleanTag == "InteractableObject.non-interactable")
+            if (cleanTag.StartsWith("Skybox."))
+            {
+                ParseAndSwapSkybox(cleanTag);
+            }
+            else if (cleanTag.StartsWith("LightingData_") || cleanTag.StartsWith("LightingData."))
+            {
+                ParseAndSwapLightingData(cleanTag);
+            }
+            else if (cleanTag.StartsWith("Emitter"))
+            {
+                ParseAndJumpToEmitter(cleanTag);
+            }
+            else if (cleanTag == "InteractableObject.non-interactable")
             {
                 SetAllObjectsInteractable(false);
             }
@@ -385,14 +606,194 @@ public class GameManager : MonoBehaviour
         }
     }
 
+    void ParseAndSwapSkybox(string tag)
+    {
+        string imageName = tag.Replace("Skybox.", "").Trim();
+
+        Texture2D newTex = Resources.Load<Texture2D>(skyboxResourcesPath + imageName);
+        if (newTex == null)
+        {
+            newTex = Resources.Load<Texture2D>(imageName);
+        }
+
+        if (newTex != null)
+        {
+            Material targetMat = skyboxMaterial != null ? skyboxMaterial : RenderSettings.skybox;
+
+            if (targetMat != null)
+            {
+                if (targetMat.HasProperty("_MainTex"))
+                    targetMat.SetTexture("_MainTex", newTex);
+                else if (targetMat.HasProperty("_Tex"))
+                    targetMat.SetTexture("_Tex", newTex);
+
+                RenderSettings.skybox = targetMat;
+                DynamicGI.UpdateEnvironment();
+            }
+        }
+        else
+        {
+            Debug.LogWarning($"[Skybox 警告] 找不到圖片資源！請確認圖片已放置於：Assets/Resources/{skyboxResourcesPath}{imageName}");
+        }
+    }
+
+    /// <summary>
+    /// 解析 Ink 標籤並比對預設好的 Preset 光照配置
+    /// </summary>
+    void ParseAndSwapLightingData(string tag)
+    {
+        string targetConfigName = tag.Trim();
+
+        if (targetConfigName.StartsWith("LightingData."))
+        {
+            targetConfigName = targetConfigName.Replace("LightingData.", "LightingData_");
+        }
+
+        GameLightingPreset? selectedPreset = null;
+        foreach (var preset in lightingPresets)
+        {
+            if (preset.configName.Equals(targetConfigName, System.StringComparison.OrdinalIgnoreCase))
+            {
+                selectedPreset = preset;
+                break;
+            }
+        }
+
+        if (selectedPreset.HasValue)
+        {
+            ApplyLightingConfig(selectedPreset.Value);
+        }
+        else
+        {
+            Debug.LogWarning($"[LightingPreset 警告] 找不到與 '{targetConfigName}' 對應的光照配置！");
+        }
+    }
+
+    /// <summary>
+    /// 在 Runtime 即時套用指定的太陽光、Area Light、環境光與 Skybox 屬性
+    /// </summary>
+    private void ApplyLightingConfig(GameLightingPreset config)
+    {
+        // 1. 調整主太陽光屬性 (顏色、強度、旋轉角度)
+        if (mainDirectionalLight != null)
+        {
+            mainDirectionalLight.color = config.lightColor;
+            mainDirectionalLight.intensity = config.lightIntensity;
+            mainDirectionalLight.transform.eulerAngles = config.lightRotation;
+        }
+
+        //  1.5 調整 Area Light 屬性 (顏色與強度)
+        if (mainAreaLight != null)
+        {
+            mainAreaLight.color = config.areaLightColor;
+            mainAreaLight.intensity = config.areaLightIntensity;
+        }
+
+        // 2. 調整全域環境光
+        RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
+        RenderSettings.ambientLight = config.ambientLightColor;
+
+        // 3. 切換 Skybox 貼圖
+        if (!string.IsNullOrEmpty(config.skyboxImageName))
+        {
+            ParseAndSwapSkybox("Skybox." + config.skyboxImageName);
+        }
+
+        // 4. 強制刷新全域 GI 環境
+        DynamicGI.UpdateEnvironment();
+    }
+
+    void ParseAndJumpToEmitter(string tag)
+    {
+        int targetIndex = -1;
+
+        if (tag.Contains("(") && tag.Contains(")"))
+        {
+            int start = tag.IndexOf('(') + 1;
+            int end = tag.IndexOf(')');
+            string numStr = tag.Substring(start, end - start).Trim();
+            int.TryParse(numStr, out targetIndex);
+        }
+        else if (tag.Contains("."))
+        {
+            string[] parts = tag.Split('.');
+            if (parts.Length >= 2)
+            {
+                int.TryParse(parts[1].Trim(), out targetIndex);
+            }
+        }
+
+        if (targetIndex > 0)
+        {
+            JumpToNthEmitter(targetIndex);
+        }
+    }
+
+    public void JumpToNthEmitter(int targetEmitterIndex)
+    {
+        if (globalDirector == null || globalDirector.playableAsset == null) return;
+
+        TimelineAsset timelineAsset = globalDirector.playableAsset as TimelineAsset;
+        if (timelineAsset == null) return;
+
+        List<SignalEmitter> allEmitters = new List<SignalEmitter>();
+
+        if (timelineAsset.markerTrack != null)
+        {
+            foreach (var marker in timelineAsset.markerTrack.GetMarkers())
+            {
+                if (marker is SignalEmitter emitter)
+                {
+                    allEmitters.Add(emitter);
+                }
+            }
+        }
+
+        foreach (var track in timelineAsset.GetOutputTracks())
+        {
+            foreach (var marker in track.GetMarkers())
+            {
+                if (marker is SignalEmitter emitter && !allEmitters.Contains(emitter))
+                {
+                    allEmitters.Add(emitter);
+                }
+            }
+        }
+
+        allEmitters.Sort((a, b) => a.time.CompareTo(b.time));
+
+        int arrayIndex = targetEmitterIndex - 1;
+        if (arrayIndex >= 0 && arrayIndex < allEmitters.Count)
+        {
+            double targetTime = allEmitters[arrayIndex].time;
+
+            if (!isTimelineCutsceneActive)
+            {
+                isTimelineCutsceneActive = true;
+                SetTimelineSystemOverride(true);
+            }
+
+            globalDirector.Pause();
+            globalDirector.time = targetTime;
+
+            globalDirector.Evaluate();
+            globalDirector.Play();
+
+            isWaitingForTimelineClick = false;
+        }
+        else
+        {
+            Debug.LogWarning($"[Timeline 警告] 找不到第 {targetEmitterIndex} 個 Emitter！目前 Timeline 共有 {allEmitters.Count} 個 Emitter。");
+        }
+    }
+
     void ParseAndSetObjectActive(string tag)
     {
         string[] split = tag.Split(new string[] { ".SetActive." }, System.StringSplitOptions.None);
         if (split.Length < 2) return;
 
         string objName = split[0].Trim();
-        string stateStr = split[1].Trim().ToLower();
-        bool targetState = (stateStr == "true");
+        bool targetState = (split[1].Trim().ToLower() == "true");
 
         GameObject targetGo = null;
 
@@ -407,26 +808,14 @@ public class GameManager : MonoBehaviour
                 Transform foundTx = environmentHolder.Find(objName);
                 if (foundTx != null) targetGo = foundTx.gameObject;
             }
-
-            if (targetGo == null)
-            {
-                targetGo = GameObject.Find(objName);
-            }
+            if (targetGo == null) targetGo = GameObject.Find(objName);
         }
 
         if (targetGo != null)
         {
             targetGo.SetActive(targetState);
-
-            InteractableObject io = targetGo.GetComponent<InteractableObject>();
-            if (io != null)
-            {
-                io.isInteractable = targetState;
-            }
-        }
-        else
-        {
-            Debug.LogWarning($"[GameManager] SetActive 找不到目標物件: {objName}");
+            var io = targetGo.GetComponent<InteractableObject>();
+            if (io != null) io.isInteractable = targetState;
         }
     }
 
@@ -446,18 +835,14 @@ public class GameManager : MonoBehaviour
         if (taskText != null)
         {
             taskText.transform.SetAsLastSibling();
-
-            RectTransform rect = taskText.rectTransform;
+            var rect = taskText.rectTransform;
             rect.anchorMin = new Vector2(0.5f, 0.5f);
             rect.anchorMax = new Vector2(0.5f, 0.5f);
             rect.pivot = new Vector2(0.5f, 0.5f);
             rect.anchoredPosition = Vector2.zero;
-
             taskText.fontSize = originalFontSize * 1.5f;
-
             taskText.color = Color.white;
             taskText.alignment = TextAlignmentOptions.Center;
-
             taskText.text = "<color=#000000><b>" + currentTaskTitle + "</b></color>\n\n<color=#FFFFFF><size=80%>" + currentTaskFullContent + "</size></color>";
         }
     }
@@ -474,25 +859,17 @@ public class GameManager : MonoBehaviour
 
         if (taskText != null)
         {
-            RectTransform rect = taskText.rectTransform;
+            var rect = taskText.rectTransform;
             rect.anchorMin = originalAnchorMin;
             rect.anchorMax = originalAnchorMax;
             rect.pivot = originalPivot;
             rect.anchoredPosition = originalAnchoredPosition;
             rect.localPosition = originalPosition;
-
             taskText.fontSize = originalFontSize;
             taskText.color = originalColor;
             taskText.alignment = TextAlignmentOptions.Left;
-
             taskText.text = "目前任務：" + currentTaskTitle;
-
-            Button btn = taskText.gameObject.GetComponent<Button>();
-            if (btn == null) btn = taskText.gameObject.AddComponent<Button>();
-            btn.onClick.RemoveAllListeners();
-            btn.onClick.AddListener(OnTaskTextClicked);
         }
-
         StartCoroutine(ResetPopupFlag());
     }
 
@@ -595,7 +972,6 @@ public class GameManager : MonoBehaviour
         {
             GameObject spawnedInstance = Instantiate(newPrefab, oldParentNode);
             spawnedInstance.name = objName;
-
             spawnedInstance.transform.localPosition = oldLocalPosition;
             spawnedInstance.transform.localRotation = oldLocalRotation;
             spawnedInstance.transform.localScale = oldLocalScale;
@@ -607,22 +983,11 @@ public class GameManager : MonoBehaviour
                 child.gameObject.layer = oldLayer;
             }
 
-            InteractableObject ioComponent = spawnedInstance.GetComponent<InteractableObject>();
-            if (ioComponent == null)
-            {
-                ioComponent = spawnedInstance.AddComponent<InteractableObject>();
-            }
-
-            if (!string.IsNullOrEmpty(oldTargetKnot))
-            {
-                ioComponent.targetKnot = oldTargetKnot;
-            }
+            var ioComponent = spawnedInstance.GetComponent<InteractableObject>();
+            if (ioComponent == null) spawnedInstance.AddComponent<InteractableObject>();
+            if (!string.IsNullOrEmpty(oldTargetKnot)) ioComponent.targetKnot = oldTargetKnot;
 
             RefreshSceneObjectsDictionary();
-        }
-        else
-        {
-            Debug.LogError($"[GameManager] Prefab Path Error: Resources/{loadPath}");
         }
     }
 
@@ -649,7 +1014,6 @@ public class GameManager : MonoBehaviour
         if (string.IsNullOrEmpty(targetObjectName)) return;
 
         GameObject targetGo = null;
-
         if (allSceneObjects.ContainsKey(targetObjectName) && allSceneObjects[targetObjectName] != null)
         {
             targetGo = allSceneObjects[targetObjectName].gameObject;
@@ -659,47 +1023,35 @@ public class GameManager : MonoBehaviour
             targetGo = GameObject.Find(targetObjectName);
         }
 
-        if (targetGo == null)
-        {
-            Debug.LogWarning($"[GameManager] Cannot find target object named: {targetObjectName} in scene.");
-            return;
-        }
+        if (targetGo == null) return;
 
         if (commandContent.StartsWith("position"))
         {
             Vector3 targetPosition = ExtractVector3(commandContent);
-            CharacterController cc = targetGo.GetComponent<CharacterController>();
-
+            var cc = targetGo.GetComponent<CharacterController>();
             if (cc != null)
             {
                 cc.enabled = false;
                 targetGo.transform.position = targetPosition;
                 cc.enabled = true;
             }
-            else
-            {
-                targetGo.transform.position = targetPosition;
-            }
+            else targetGo.transform.position = targetPosition;
         }
         else if (commandContent.StartsWith("rotation"))
         {
             Vector3 targetRotation = ExtractVector3(commandContent);
-            CharacterController cc = targetGo.GetComponent<CharacterController>();
-
+            var cc = targetGo.GetComponent<CharacterController>();
             if (cc != null)
             {
                 cc.enabled = false;
                 targetGo.transform.eulerAngles = targetRotation;
                 cc.enabled = true;
             }
-            else
-            {
-                targetGo.transform.eulerAngles = targetRotation;
-            }
+            else targetGo.transform.eulerAngles = targetRotation;
         }
         else if (commandContent.StartsWith("TargetKnot"))
         {
-            InteractableObject targetInteract = targetGo.GetComponent<InteractableObject>();
+            var targetInteract = targetGo.GetComponent<InteractableObject>();
             if (targetInteract != null)
             {
                 string[] parts = commandContent.Split('=');
@@ -728,7 +1080,7 @@ public class GameManager : MonoBehaviour
             Material newMat = Resources.Load<Material>("Prefabs/" + objName + "/Materials/" + materialName);
             if (newMat != null)
             {
-                MeshRenderer renderer = targetGo.GetComponentInChildren<MeshRenderer>();
+                var renderer = targetGo.GetComponentInChildren<MeshRenderer>();
                 if (renderer != null) renderer.material = newMat;
             }
         }
@@ -740,12 +1092,42 @@ public class GameManager : MonoBehaviour
         string[] split = tag.Split(new string[] { ".timeline." }, System.StringSplitOptions.None);
         if (split.Length < 2) return;
 
-        PlayableAsset timelineAsset = Resources.Load<PlayableAsset>("Prefabs/" + split[0].Trim() + "/Timelines/" + split[1].Trim());
+        string timelineName = split[1].Trim();
+        PlayableAsset timelineAsset = Resources.Load<PlayableAsset>("Timelines/" + timelineName);
+
         if (timelineAsset != null)
         {
+            if (globalDirector.playableAsset == timelineAsset && isTimelineCutsceneActive)
+            {
+                return;
+            }
+
+            isTimelineCutsceneActive = true;
+            isWaitingForTimelineClick = false;
+
+            SetTimelineSystemOverride(true);
+
             globalDirector.Stop();
             globalDirector.playableAsset = timelineAsset;
+
+            TimelineAsset timeline = timelineAsset as TimelineAsset;
+            if (timeline != null)
+            {
+                foreach (var track in timeline.GetOutputTracks())
+                {
+                    AnimationTrack animTrack = track as AnimationTrack;
+                    if (animTrack != null)
+                    {
+                        animTrack.trackOffset = TrackOffset.ApplyTransformOffsets;
+                    }
+                }
+            }
+
             globalDirector.Play();
+        }
+        else
+        {
+            Debug.LogError($"[Timeline 錯誤] 找不到 Timeline 資源！請確認檔案是否存在於：Assets/Resources/Timelines/{timelineName}");
         }
     }
 
@@ -800,7 +1182,7 @@ public class GameManager : MonoBehaviour
         {
             GameObject btn = Instantiate(choiceButtonPrefab, choiceHolder);
             btn.GetComponentInChildren<TextMeshProUGUI>().text = choice.text;
-            btn.GetComponent<Button>().onClick.AddListener(() => StartCoroutine(OnChoiceSelected(choice.index)));
+            btn.GetComponent<Button>().onClick.AddListener(() => StartCoroutine(OnChoiceSelected(index: choice.index)));
         }
     }
 

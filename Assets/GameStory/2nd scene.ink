@@ -36,10 +36,11 @@
 -> DONE
 
 === Test ===
-這是您的包裹，請您簽收
+.#Animation.timeline.3
+這是您的包裹，請您簽收 
 +[接收包裹]
 你收到了一個包裹，上面印有...
-.#Courier.SetActive.false
+//.#Courier.SetActive.false
 .#Task.text.檢查包裹
 
 -> DONE
