@@ -1,24 +1,25 @@
+INCLUDE 1st scene.ink
 INCLUDE 2nd scene.ink
+INCLUDE 9th scene.ink
+
 VAR scene = 1
 
 === PickUpthePhone ===
 要是當初，我能更早發現就好了...
-
-+{not test} [接聽] 
-    # PhoneAction: PickUp
-    # ChangePhoneImage: Incoming_Call
-    -> Switch_scene2
-    
-+{test}[點擊測試物件後接聽] 
-    # PhoneAction: PickUp
-    # ChangePhoneImage: Incoming_Call
-    -> Switch_scene2
++[接聽] 
+    //# PhoneAction: PickUp
+    //# ChangePhoneImage: Incoming_Call
+    .#fade.Out
+    -> Title
 
 + [掛斷] 
     
-    -> Hang_up_the_call
+    -> DONE
 
 
+===Title===
+.#Animation.timeline.Title
+-> Scene1_start
 
 === Answer_the_call ===
 (文字)
@@ -50,10 +51,15 @@ VAR scene = 1
 # TargetKnot="Answer_the_call"
 ->END
 
-=== test ===
-測試
-END
+=== prologue ===
+.#LightingData_Night
+.#FreeLook Camera(3P).SetActive.false
+.#Animation.timeline.1
+.#phone.mode.Interactor
+
 ->DONE
+
+
 
 === intro_story ===
 # DirectorObject.timeline.Timeline_IntroScene
@@ -61,3 +67,8 @@ END
 NPC點點頭說道：「你終於來了。」
 註：DirectorObject 是你場景上掛載 PlayableDirector 的物件名稱，Timeline_IntroScene 則是對應的 Timeline 資源檔名。
 -> DONE
+
+=== desk_box_dialogue ===
+這是一個古老的木盒，上面蓋著一層厚厚的灰塵。
+# DeskBox.mode.Inspector
+-> END

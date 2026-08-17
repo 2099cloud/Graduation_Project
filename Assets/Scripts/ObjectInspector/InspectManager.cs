@@ -2,29 +2,36 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.EventSystems;
 using UnityEngine.Rendering.Universal;
 
 /// <summary>
-/// 全域單例管理器，掛載在場景中的空物件上，管理檢視相機、Clone 生成與 UI
+/// Global Singleton Manager for 3D inspection, dynamic UI slots, and camera handling.
 /// </summary>
 public class InspectManager : MonoBehaviour
 {
     public static InspectManager Instance { get; private set; }
 
-    [Header("UI 引用")]
+    [Header("UI References")]
     public CanvasGroup fadeGroup;
-    public RectTransform inventoryHotbar; // 底部線索欄容器
+    public RectTransform inventoryHotbar;
 
-    [Header("動態 UI 格子設定")]
+    [Header("Hotbar Animation Settings")]
+    public float hotbarOffsetY = 100f;
+    public float hotbarAnimDuration = 0.3f;
+
+    [Header("Dynamic UI Slot Settings")]
     public Vector2 slotSize = new Vector2(80f, 80f);
+    [Tooltip("Low saturation / dim color when not fully unlocked")]
+    public Color dimColor = new Color(0.35f, 0.35f, 0.35f, 1f);
 
-    [Header("旋轉與縮放設定")]
+    [Header("Rotation and Zoom Settings")]
     public float rotateSpeed = 5f;
     public float zoomSpeed = 2f;
     public float minScale = 0.5f;
     public float maxScale = 2.5f;
 
-    [Header("檢視位置與 Layer")]
+    [Header("Inspect Position and Layer")]
     public Vector3 isolatedSpawnCenter = new Vector3(0f, -1000f, 0f);
     public float inspectDistance = 1.5f;
     public Vector3 positionOffset = Vector3.zero;
@@ -37,7 +44,18 @@ public class InspectManager : MonoBehaviour
     private float currentZoomMultiplier = 1f;
 
     private InspectableObject currentTarget;
-    private Dictionary<InspectableObject, Image> activeSlotImages = new Dictionary<InspectableObject, Image>();
+
+    private Dictionary<InspectableObject, Image> activeDimSlotImages = new Dictionary<InspectableObject, Image>();
+    private Dictionary<InspectableObject, Image> activeColorSlotImages = new Dictionary<InspectableObject, Image>();
+
+    private bool isTimelinePlaying = false;
+
+    private Dictionary<MonoBehaviour, bool> previousGameManagerScriptStates = new Dictionary<MonoBehaviour, bool>();
+
+    private Vector2 hotbarOriginalPos;
+    private Vector2 hotbarLoweredPos;
+    private bool isHotbarVisible = false;
+    private Coroutine hotbarAnimCoroutine;
 
     private void Awake()
     {
@@ -54,14 +72,165 @@ public class InspectManager : MonoBehaviour
         if (inventoryHotbar != null)
         {
             EnsureHorizontalLayout();
+            hotbarOriginalPos = inventoryHotbar.anchoredPosition;
+            hotbarLoweredPos = hotbarOriginalPos - new Vector2(0f, hotbarOffsetY);
+            inventoryHotbar.anchoredPosition = hotbarLoweredPos;
             inventoryHotbar.gameObject.SetActive(false);
+            isHotbarVisible = false;
         }
     }
 
     private void Update()
     {
-        if (!isInspecting) return;
+        if (!isInspecting)
+        {
+            if (Input.GetKeyDown(KeyCode.E) && !isTimelinePlaying)
+            {
+                ToggleHotbar();
+            }
+            HandleWorldObjectSelection();
+            return;
+        }
+
+        MaintainGameManagerControlsDisabled();
         HandleInput();
+    }
+
+    public void ToggleHotbar()
+    {
+        SetHotbarVisible(!isHotbarVisible, true);
+    }
+
+    public void SetHotbarVisible(bool visible, bool animate = true)
+    {
+        if (inventoryHotbar == null) return;
+
+        if (isTimelinePlaying && visible)
+        {
+            visible = false;
+        }
+
+        isHotbarVisible = visible;
+
+        if (hotbarAnimCoroutine != null)
+        {
+            StopCoroutine(hotbarAnimCoroutine);
+        }
+
+        if (animate && gameObject.activeInHierarchy)
+        {
+            hotbarAnimCoroutine = StartCoroutine(AnimateHotbar(visible));
+        }
+        else
+        {
+            inventoryHotbar.anchoredPosition = visible ? hotbarOriginalPos : hotbarLoweredPos;
+            inventoryHotbar.gameObject.SetActive(visible);
+        }
+    }
+
+    private IEnumerator AnimateHotbar(bool show)
+    {
+        inventoryHotbar.gameObject.SetActive(true);
+
+        Vector2 startPos = inventoryHotbar.anchoredPosition;
+        Vector2 targetPos = show ? hotbarOriginalPos : hotbarLoweredPos;
+        float elapsed = 0f;
+
+        while (elapsed < hotbarAnimDuration)
+        {
+            elapsed += Time.deltaTime;
+            float t = Mathf.Clamp01(elapsed / hotbarAnimDuration);
+            t = Mathf.SmoothStep(0f, 1f, t);
+            inventoryHotbar.anchoredPosition = Vector2.Lerp(startPos, targetPos, t);
+            yield return null;
+        }
+
+        inventoryHotbar.anchoredPosition = targetPos;
+        if (!show)
+        {
+            inventoryHotbar.gameObject.SetActive(false);
+        }
+        hotbarAnimCoroutine = null;
+    }
+
+    /// <summary>
+    /// Call from Timeline or GameManager to toggle Timeline playing state.
+    /// </summary>
+    public void SetTimelinePlaying(bool isPlaying)
+    {
+        isTimelinePlaying = isPlaying;
+        Debug.Log($"[InspectManager Debug] Timeline playing state changed to: {isPlaying}");
+
+        if (inventoryHotbar != null && isPlaying)
+        {
+            SetHotbarVisible(false, false);
+        }
+
+        if (!isPlaying)
+        {
+            Cursor.lockState = CursorLockMode.None;
+            Cursor.visible = true;
+        }
+    }
+
+    public void SetHotbarActive(bool active)
+    {
+        SetHotbarVisible(active, true);
+    }
+
+    private void HandleWorldObjectSelection()
+    {
+        if (Input.GetMouseButtonDown(0))
+        {
+            if (isTimelinePlaying)
+            {
+                Debug.LogWarning("[InspectManager Debug] World object click ignored because isTimelinePlaying is TRUE. Call SetTimelinePlaying(false) when timeline finishes.");
+                return;
+            }
+
+            if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject())
+            {
+                Debug.Log("[InspectManager Debug] Mouse over UI, ignoring world object click.");
+                return;
+            }
+
+            Camera mainCam = Camera.main;
+            if (mainCam == null)
+            {
+                Debug.LogWarning("[InspectManager Debug] MainCamera tag not found! Cannot cast Raycast.");
+                return;
+            }
+
+            Ray ray = mainCam.ScreenPointToRay(Input.mousePosition);
+            Debug.Log($"[InspectManager Debug] Casting Raycast from camera: {mainCam.name}, mouse pos: {Input.mousePosition}");
+
+            if (Physics.Raycast(ray, out RaycastHit hit, 100f))
+            {
+                Debug.Log($"[InspectManager Debug] Raycast hit collider: [{hit.collider.gameObject.name}] (Layer: {LayerMask.LayerToName(hit.collider.gameObject.layer)})");
+
+                InspectableObject target = hit.collider.GetComponent<InspectableObject>();
+                if (target == null) target = hit.collider.GetComponentInChildren<InspectableObject>();
+                if (target == null) target = hit.collider.GetComponentInParent<InspectableObject>();
+
+                if (target != null && target.enabled)
+                {
+                    Debug.Log($"<color=green>[InspectManager Debug] InspectableObject found: {target.name}. Opening inspect mode.</color>");
+                    StartInspect(target);
+                }
+                else if (target != null && !target.enabled)
+                {
+                    Debug.LogWarning($"[InspectManager Debug] Hit [{hit.collider.name}], but InspectableObject component is disabled.");
+                }
+                else
+                {
+                    Debug.LogWarning($"[InspectManager Debug] Hit [{hit.collider.name}], but no InspectableObject script attached in hierarchy.");
+                }
+            }
+            else
+            {
+                Debug.Log("[InspectManager Debug] Raycast missed all 3D colliders.");
+            }
+        }
     }
 
     private void EnsureHorizontalLayout()
@@ -69,7 +238,7 @@ public class InspectManager : MonoBehaviour
         HorizontalLayoutGroup layout = inventoryHotbar.GetComponent<HorizontalLayoutGroup>();
         if (layout == null) layout = inventoryHotbar.gameObject.AddComponent<HorizontalLayoutGroup>();
 
-        layout.childAlignment = TextAnchor.MiddleCenter; // 垂直與水平皆完全置中
+        layout.childAlignment = TextAnchor.MiddleCenter;
         layout.childControlWidth = false;
         layout.childControlHeight = false;
         layout.childForceExpandWidth = false;
@@ -79,16 +248,28 @@ public class InspectManager : MonoBehaviour
 
     public void StartInspect(InspectableObject target)
     {
-        if (isInspecting || target == null) return;
+        if (isInspecting || target == null || !target.enabled || isTimelinePlaying)
+        {
+            Debug.LogWarning($"[InspectManager Debug] Cannot StartInspect. isInspecting={isInspecting}, targetIsNull={target == null}, targetDisabled={(target != null && !target.enabled)}, isTimelinePlaying={isTimelinePlaying}");
+            return;
+        }
 
-        currentTarget = target;
+        Debug.Log($"<color=yellow>[InspectManager Debug] Starting inspect mode for target: {target.name}</color>");
+
+        Cursor.lockState = CursorLockMode.None;
+        Cursor.visible = true;
+
+        SetCurrentTarget(target);
         isInspecting = true;
+
+        PauseGameManagerControls();
 
         Camera mainCam = Camera.main;
         if (mainCam == null)
         {
-            Debug.LogError("[InspectManager] 找不到 Tag 為 MainCamera 的相機！");
+            Debug.LogError("[InspectManager Debug] MainCamera not found! Aborting inspect.");
             isInspecting = false;
+            RestoreGameManagerControls();
             return;
         }
 
@@ -98,15 +279,14 @@ public class InspectManager : MonoBehaviour
             fadeGroup.blocksRaycasts = true;
         }
 
-        if (inventoryHotbar != null) inventoryHotbar.gameObject.SetActive(true);
+        if (inventoryHotbar != null && !isTimelinePlaying)
+        {
+            SetHotbarVisible(true, true);
+        }
 
-        // 1. 初始化/動態生成 UI 格子
         SetupMainObjectSlot(currentTarget);
-
-        // 2. 建立 Overlay 相機
         CreateInspectCameraURP(mainCam);
 
-        // 3. 計算生成位置
         Vector3 targetPosition = inspectCamera.transform.position + (inspectCamera.transform.forward * inspectDistance);
         targetPosition += inspectCamera.transform.right * positionOffset.x;
         targetPosition += inspectCamera.transform.up * positionOffset.y;
@@ -114,25 +294,24 @@ public class InspectManager : MonoBehaviour
 
         Quaternion targetRotation = Quaternion.LookRotation(inspectCamera.transform.forward, inspectCamera.transform.up);
 
-        // 4. 生成 Clone 物件
         clonedObject = Instantiate(target.gameObject, targetPosition, targetRotation);
         clonedObject.name = $"[INSPECT_CLONE] {target.gameObject.name}";
 
         originalClonedScale = clonedObject.transform.localScale;
         currentZoomMultiplier = 1f;
 
-        // 設置 Layer
         int layerIndex = MaskToLayer(inspectLayer);
         SetLayerRecursively(clonedObject, layerIndex);
+
+        Debug.Log($"[InspectManager Debug] Cloned object [{clonedObject.name}] created on Layer: {LayerMask.LayerToName(layerIndex)}");
     }
 
-    private void SetupMainObjectSlot(InspectableObject target)
+    public void SetupMainObjectSlot(InspectableObject target)
     {
-        if (inventoryHotbar == null) return;
+        if (inventoryHotbar == null || target == null) return;
 
-        if (!activeSlotImages.ContainsKey(target))
+        if (!activeDimSlotImages.ContainsKey(target))
         {
-            // --- 1. 外層：Slot 容器 (負責在 Hotbar 中定位與排列) ---
             GameObject slotGo = new GameObject($"Slot_{target.mainInfoID}", typeof(RectTransform));
             slotGo.transform.SetParent(inventoryHotbar, false);
 
@@ -142,74 +321,149 @@ public class InspectManager : MonoBehaviour
             slotRect.anchorMax = new Vector2(0.5f, 0.5f);
             slotRect.pivot = new Vector2(0.5f, 0.5f);
 
-            // --- 2. 內層：Icon 圖示 (負責顯示圖片、比例縮放與 Fill 進度條) ---
-            GameObject iconGo = new GameObject("Icon", typeof(RectTransform), typeof(Image));
-            iconGo.transform.SetParent(slotGo.transform, false);
+            GameObject dimGo = new GameObject("DimIcon", typeof(RectTransform), typeof(Image));
+            dimGo.transform.SetParent(slotGo.transform, false);
 
-            RectTransform iconRect = iconGo.GetComponent<RectTransform>();
-            iconRect.anchorMin = Vector2.zero;
-            iconRect.anchorMax = Vector2.one;
-            iconRect.sizeDelta = Vector2.zero; // 完全對齊父容器中心
-            iconRect.pivot = new Vector2(0.5f, 0.5f);
+            RectTransform dimRect = dimGo.GetComponent<RectTransform>();
+            dimRect.anchorMin = Vector2.zero;
+            dimRect.anchorMax = Vector2.one;
+            dimRect.sizeDelta = Vector2.zero;
+            dimRect.pivot = new Vector2(0.5f, 0.5f);
 
-            Image slotImg = iconGo.GetComponent<Image>();
-            activeSlotImages[target] = slotImg;
+            Image dimImg = dimGo.GetComponent<Image>();
+            dimImg.raycastTarget = false;
+
+            GameObject colorGo = new GameObject("ColorIcon", typeof(RectTransform), typeof(Image));
+            colorGo.transform.SetParent(slotGo.transform, false);
+
+            RectTransform colorRect = colorGo.GetComponent<RectTransform>();
+            colorRect.anchorMin = Vector2.zero;
+            colorRect.anchorMax = Vector2.one;
+            colorRect.sizeDelta = Vector2.zero;
+            colorRect.pivot = new Vector2(0.5f, 0.5f);
+
+            Image colorImg = colorGo.GetComponent<Image>();
+            colorImg.raycastTarget = false;
+
+            Image btnGraphic = slotGo.AddComponent<Image>();
+            btnGraphic.color = new Color(0f, 0f, 0f, 0f);
+            btnGraphic.raycastTarget = true;
+
+            Button slotBtn = slotGo.AddComponent<Button>();
+            slotBtn.targetGraphic = btnGraphic;
+
+            InspectableObject capturedTarget = target;
+            slotBtn.onClick.AddListener(() => SetCurrentTarget(capturedTarget));
+
+            activeDimSlotImages[target] = dimImg;
+            activeColorSlotImages[target] = colorImg;
+
+            Debug.Log($"[InspectManager Debug] Dynamic UI slot created: Slot_{target.mainInfoID}");
         }
 
-        Image slotImage = activeSlotImages[target];
+        Image dimImage = activeDimSlotImages[target];
+        Image colorImage = activeColorSlotImages[target];
 
-        if (slotImage != null && target.mainSprite != null)
+        if (dimImage != null && colorImage != null && target.mainSprite != null)
         {
-            // 生成黑白縮圖
-            Sprite bwSprite = CreateGrayscaleSprite(target.mainSprite, target.useCustomCrop, target.cropRect);
-            Sprite finalSprite = (bwSprite != null) ? bwSprite : target.mainSprite;
+            dimImage.sprite = target.mainSprite;
+            colorImage.sprite = target.mainSprite;
 
-            slotImage.sprite = finalSprite;
+            dimImage.type = Image.Type.Filled;
+            dimImage.fillMethod = Image.FillMethod.Vertical;
+            dimImage.fillOrigin = (int)Image.OriginVertical.Top;
+            dimColor.a = 1f;
+            dimImage.color = dimColor;
 
-            // 在內層 Icon 上掛載 AspectRatioFitter，使其相對於 Slot 容器保持正確比例並置中
-            AspectRatioFitter fitter = slotImage.GetComponent<AspectRatioFitter>();
-            if (fitter == null)
-            {
-                fitter = slotImage.gameObject.AddComponent<AspectRatioFitter>();
-            }
-            fitter.aspectMode = AspectRatioFitter.AspectMode.FitInParent;
+            colorImage.type = Image.Type.Filled;
+            colorImage.fillMethod = Image.FillMethod.Vertical;
+            colorImage.fillOrigin = (int)Image.OriginVertical.Top;
+            colorImage.color = Color.white;
 
-            if (finalSprite != null && finalSprite.rect.height > 0)
-            {
-                fitter.aspectRatio = finalSprite.rect.width / finalSprite.rect.height;
-            }
-
-            // 設定 UI Filled 進度條屬性
-            slotImage.type = Image.Type.Filled;
-            slotImage.fillMethod = Image.FillMethod.Vertical;
-            slotImage.fillOrigin = (int)Image.OriginVertical.Top;
+            SetupAspectRatio(dimImage.gameObject, target.mainSprite);
+            SetupAspectRatio(colorImage.gameObject, target.mainSprite);
 
             UpdateSlotFillProgress(target);
-            slotImage.enabled = true;
         }
+    }
+
+    private void SetupAspectRatio(GameObject targetGo, Sprite sprite)
+    {
+        AspectRatioFitter fitter = targetGo.GetComponent<AspectRatioFitter>();
+        if (fitter == null) fitter = targetGo.AddComponent<AspectRatioFitter>();
+
+        fitter.aspectMode = AspectRatioFitter.AspectMode.FitInParent;
+        if (sprite != null && sprite.rect.height > 0)
+        {
+            fitter.aspectRatio = sprite.rect.width / sprite.rect.height;
+        }
+    }
+
+    public void SetCurrentTarget(InspectableObject target)
+    {
+        if (target == null) return;
+        currentTarget = target;
+        Debug.Log($"<color=cyan>[InspectManager Debug] Current target switched to: {target.mainInfoID}</color>");
+    }
+
+    public void RegisterEvidenceSlot(InspectableObject target)
+    {
+        SetupMainObjectSlot(target);
     }
 
     private void UpdateSlotFillProgress(InspectableObject target)
     {
-        if (!activeSlotImages.ContainsKey(target)) return;
+        if (target == null || !activeDimSlotImages.ContainsKey(target) || !activeColorSlotImages.ContainsKey(target)) return;
 
-        Image slotImage = activeSlotImages[target];
-        int totalSub = target.subObjectInfos.Count;
+        Image dimImage = activeDimSlotImages[target];
+        Image colorImage = activeColorSlotImages[target];
+        if (dimImage == null || colorImage == null) return;
+
+        int totalSub = (target.subObjectInfos != null) ? target.subObjectInfos.Count : 0;
         int foundSub = target.GetFoundCount();
+        int verifiedSub = GetVerifiedCount(target);
 
-        float fillRatio = (totalSub > 0) ? (float)foundSub / totalSub : 1f;
-        slotImage.fillAmount = fillRatio;
+        float foundRatio = (totalSub > 0) ? (float)foundSub / totalSub : 1f;
+        dimImage.fillAmount = foundRatio;
 
-        if (foundSub >= totalSub && totalSub > 0 && !target.isMainEvidenceUnlocked)
+        float verifiedRatio = (totalSub > 0) ? (float)verifiedSub / totalSub : 1f;
+        colorImage.fillAmount = verifiedRatio;
+
+        dimImage.enabled = true;
+        colorImage.enabled = true;
+        dimImage.gameObject.SetActive(true);
+        colorImage.gameObject.SetActive(true);
+
+        Debug.Log($"[InspectManager Debug] Update [{target.mainInfoID}] UI -> 3D Found: {foundSub}/{totalSub} ({foundRatio:P0}), Verified: {verifiedSub}/{totalSub} ({verifiedRatio:P0})");
+
+        if (verifiedRatio >= 1f && totalSub > 0)
         {
-            target.isMainEvidenceUnlocked = true;
-            Debug.Log($"<color=green>[證據解鎖] 找齊所有線索，獲得主物件證據：{target.mainInfoID}！</color>");
-
-            if (EvidenceManager.Instance != null)
+            if (!target.isMainEvidenceUnlocked)
             {
-                EvidenceManager.Instance.CollectEvidence(target.mainInfoID);
+                target.isMainEvidenceUnlocked = true;
+                Debug.Log($"<color=green>[Evidence Unlocked] Object {target.mainInfoID} fully verified and unlocked!</color>");
+
+                if (EvidenceManager.Instance != null)
+                {
+                    EvidenceManager.Instance.CollectEvidence(target.mainInfoID);
+                }
             }
         }
+    }
+
+    private int GetVerifiedCount(InspectableObject target)
+    {
+        if (target == null || target.subObjectInfos == null) return 0;
+
+        int count = 0;
+        foreach (var sub in target.subObjectInfos)
+        {
+            if (sub != null && sub.isVerified)
+            {
+                count++;
+            }
+        }
+        return count;
     }
 
     public void StopInspect()
@@ -217,16 +471,23 @@ public class InspectManager : MonoBehaviour
         if (!isInspecting) return;
         isInspecting = false;
 
+        Debug.Log("<color=yellow>[InspectManager Debug] Exiting 3D inspect mode.</color>");
+
         if (fadeGroup != null)
         {
             fadeGroup.alpha = 0f;
             fadeGroup.blocksRaycasts = false;
         }
 
-        if (inventoryHotbar != null) inventoryHotbar.gameObject.SetActive(false);
+        if (inventoryHotbar != null)
+        {
+            SetHotbarVisible(false, true);
+        }
+
         if (clonedObject != null) Destroy(clonedObject);
 
         RemoveInspectCameraURP();
+        RestoreGameManagerControls();
     }
 
     private void CreateInspectCameraURP(Camera mainCam)
@@ -250,6 +511,7 @@ public class InspectManager : MonoBehaviour
         }
 
         mainCam.cullingMask &= ~inspectLayer.value;
+        Debug.Log("[InspectManager Debug] InspectCamera URP Overlay setup completed.");
     }
 
     private void RemoveInspectCameraURP()
@@ -277,13 +539,13 @@ public class InspectManager : MonoBehaviour
     {
         if (Input.GetKeyDown(KeyCode.Escape) || Input.GetMouseButtonDown(1))
         {
+            Debug.Log("[InspectManager Debug] ESC or Right-click detected, requesting exit from inspect mode.");
             StopInspect();
             return;
         }
 
         if (clonedObject == null || inspectCamera == null) return;
 
-        // 旋轉
         if (Input.GetMouseButton(0))
         {
             float rotX = Input.GetAxis("Mouse X") * rotateSpeed;
@@ -293,7 +555,6 @@ public class InspectManager : MonoBehaviour
             clonedObject.transform.Rotate(inspectCamera.transform.right, rotY, Space.World);
         }
 
-        // 縮放
         float scroll = Input.GetAxis("Mouse ScrollWheel");
         if (Mathf.Abs(scroll) > 0.01f)
         {
@@ -302,66 +563,52 @@ public class InspectManager : MonoBehaviour
             clonedObject.transform.localScale = originalClonedScale * currentZoomMultiplier;
         }
 
-        // 點擊線索
         if (Input.GetMouseButtonDown(0))
         {
+            if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject())
+            {
+                Debug.Log("[InspectManager Debug] Clicked on UI during inspect mode, ignoring sub-evidence raycast.");
+                return;
+            }
+
             Ray ray = inspectCamera.ScreenPointToRay(Input.mousePosition);
+            Debug.Log($"[InspectManager Debug] Inspect mode Raycast cast at pos: {Input.mousePosition}");
+
             if (Physics.Raycast(ray, out RaycastHit hit, 100f, inspectLayer))
             {
+                Debug.Log($"[InspectManager Debug] Inspect mode Raycast hit cloned object: [{hit.collider.gameObject.name}]");
+                GameObject hitGo = hit.collider.gameObject;
+
                 InspectableObject clonedInfo = clonedObject.GetComponent<InspectableObject>();
                 if (clonedInfo == null) clonedInfo = clonedObject.GetComponentInChildren<InspectableObject>();
 
                 if (clonedInfo != null && currentTarget != null)
                 {
-                    if (clonedInfo.TryGetSubObjectInfo(hit.collider.gameObject, out SubObjectInfo foundSubInfo, out int index))
+                    if (clonedInfo.TryGetSubObjectInfo(hitGo, out SubObjectInfo foundSubInfo, out int index))
                     {
                         if (!foundSubInfo.isFound)
                         {
+                            Debug.Log($"<color=cyan>[InspectManager Debug] Sub-evidence found: (Index: {index})!</color>");
                             clonedInfo.MarkAsFound(index);
                             currentTarget.MarkAsFound(index);
 
                             UpdateSlotFillProgress(currentTarget);
                         }
+                        else
+                        {
+                            Debug.Log($"[InspectManager Debug] Sub-evidence was already found previously.");
+                        }
+                    }
+                    else
+                    {
+                        Debug.Log($"[InspectManager Debug] Hit object [{hitGo.name}] is not registered in sub-evidence list.");
                     }
                 }
             }
-        }
-    }
-
-    private Sprite CreateGrayscaleSprite(Sprite sourceSprite, bool useCustomCrop, Rect customRect)
-    {
-        if (sourceSprite == null) return null;
-
-        try
-        {
-            Texture2D sourceTex = sourceSprite.texture;
-            Rect sourceRect = sourceSprite.rect;
-
-            Rect finalRect = useCustomCrop ? customRect : sourceRect;
-
-            int x = Mathf.Clamp((int)finalRect.x, 0, sourceTex.width);
-            int y = Mathf.Clamp((int)finalRect.y, 0, sourceTex.height);
-            int width = Mathf.Clamp((int)finalRect.width, 1, sourceTex.width - x);
-            int height = Mathf.Clamp((int)finalRect.height, 1, sourceTex.height - y);
-
-            Texture2D bwTexture = new Texture2D(width, height, TextureFormat.RGBA32, false);
-            Color[] pixels = sourceTex.GetPixels(x, y, width, height);
-
-            for (int i = 0; i < pixels.Length; i++)
+            else
             {
-                float gray = pixels[i].r * 0.299f + pixels[i].g * 0.587f + pixels[i].b * 0.114f;
-                pixels[i] = new Color(gray, gray, gray, pixels[i].a);
+                Debug.Log("[InspectManager Debug] Inspect mode Raycast missed all Inspect Layer objects.");
             }
-
-            bwTexture.SetPixels(pixels);
-            bwTexture.Apply();
-
-            return Sprite.Create(bwTexture, new Rect(0, 0, width, height), new Vector2(0.5f, 0.5f));
-        }
-        catch (System.Exception e)
-        {
-            Debug.LogWarning($"[InspectManager] 圖片轉灰階失敗！請點擊 Sprite 資源並在 Inspector 勾選 'Read/Write Enabled'。錯誤細節：{e.Message}");
-            return sourceSprite;
         }
     }
 
@@ -387,5 +634,101 @@ public class InspectManager : MonoBehaviour
             layer++;
         }
         return layer;
+    }
+
+    public InspectableObject GetCurrentTarget()
+    {
+        return currentTarget;
+    }
+
+    public void UpdateCurrentSlotProgress(InspectableObject target)
+    {
+        UpdateSlotFillProgress(target);
+    }
+
+    private void PauseGameManagerControls()
+    {
+        previousGameManagerScriptStates.Clear();
+        GameManager gm = FindObjectOfType<GameManager>();
+        if (gm == null)
+        {
+            Debug.LogWarning("[InspectManager Debug] GameManager object not found in scene.");
+            return;
+        }
+
+        Debug.Log("[InspectManager Debug] Pausing GameManager control scripts and Cinemachine cameras.");
+
+        MonoBehaviour[] cinemachineCameras = new MonoBehaviour[]
+        {
+            gm.firstPersonCamera,
+            gm.thirdPersonCamera,
+            gm.timelineCamera
+        };
+
+        foreach (var cam in cinemachineCameras)
+        {
+            if (cam != null && !previousGameManagerScriptStates.ContainsKey(cam))
+            {
+                previousGameManagerScriptStates[cam] = cam.enabled;
+                cam.enabled = false;
+            }
+        }
+
+        if (gm.cameraControlScripts != null)
+        {
+            foreach (var script in gm.cameraControlScripts)
+            {
+                if (script != null && !previousGameManagerScriptStates.ContainsKey(script))
+                {
+                    previousGameManagerScriptStates[script] = script.enabled;
+                    script.enabled = false;
+                }
+            }
+        }
+    }
+
+    private void MaintainGameManagerControlsDisabled()
+    {
+        GameManager gm = FindObjectOfType<GameManager>();
+        if (gm == null) return;
+
+        MonoBehaviour[] cinemachineCameras = new MonoBehaviour[]
+        {
+            gm.firstPersonCamera,
+            gm.thirdPersonCamera,
+            gm.timelineCamera
+        };
+
+        foreach (var cam in cinemachineCameras)
+        {
+            if (cam != null && cam.enabled)
+            {
+                cam.enabled = false;
+            }
+        }
+
+        if (gm.cameraControlScripts != null)
+        {
+            foreach (var script in gm.cameraControlScripts)
+            {
+                if (script != null && script.enabled)
+                {
+                    script.enabled = false;
+                }
+            }
+        }
+    }
+
+    private void RestoreGameManagerControls()
+    {
+        Debug.Log("[InspectManager Debug] Restoring GameManager control scripts and cameras to original states.");
+        foreach (var kvp in previousGameManagerScriptStates)
+        {
+            if (kvp.Key != null)
+            {
+                kvp.Key.enabled = kvp.Value;
+            }
+        }
+        previousGameManagerScriptStates.Clear();
     }
 }

@@ -6,4 +6,9 @@ public class InteractableObject : MonoBehaviour
 
     // 可以加一個開關，控制目前這個物件是否可以被點擊
     public bool isInteractable = true;
+
+    private void Start()
+    {
+        
+    }
 }

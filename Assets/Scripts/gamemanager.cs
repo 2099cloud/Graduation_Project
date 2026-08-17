@@ -7,51 +7,57 @@ using TMPro;
 using UnityEngine.Playables;
 using UnityEngine.Timeline;
 using UnityEngine.SceneManagement;
+using UnityEngine.EventSystems;
 using System.Linq;
 
 public class GameManager : MonoBehaviour
 {
-    // 使用 GameLightingPreset 避開所有 Unity C++ 原生內部類別名稱
     [System.Serializable]
     public struct GameLightingPreset
     {
-        public string configName;       // Ink 標籤名稱，例如 "LightingData_Night" 或 "LightingData_Day"
-        public Color lightColor;        // 太陽光顏色
-        public float lightIntensity;    // 太陽光強度
-        public Vector3 lightRotation;   // 太陽光角度 (Euler Angles)
-        public Color ambientLightColor; // 環境光顏色 (RenderSettings.ambientLight)
-        public string skyboxImageName;  // Skybox 圖片名稱
+        public string configName;
+        public Color lightColor;
+        public float lightIntensity;
+        public Vector3 lightRotation;
+        public Color ambientLightColor;
+        public string skyboxImageName;
 
-        [Header("Area Light 配置")]
-        public Color areaLightColor;    // Area Light 顏色
-        public float areaLightIntensity;// Area Light 強度
+        [Header("Area Light Configuration")]
+        public Color areaLightColor;
+        public float areaLightIntensity;
     }
 
-    [Header("Ink 配置")]
+    [Header("Ink Configuration")]
     public TextAsset inkJsonAsset;
+    [Tooltip("Starting knot name when game begins.")]
+    public string startingKnot = "";
     private Story story;
 
-    [Header("UI 引用")]
+    [Header("UI References")]
     public TextMeshProUGUI dialogueText;
     public GameObject choiceButtonPrefab;
     public Transform choiceHolder;
 
-    [Header("任務系統配置")]
+    [Header("Task System Configuration")]
     public TextMeshProUGUI taskText;
     public string taskCsvPath = "TaskManager";
 
-    [Header("Timeline 配置")]
+    [Header("Timeline Configuration")]
     public PlayableDirector globalDirector;
 
-    [Header("混合光照 (Mixed Lighting) 配置")]
-    [Tooltip("請拖入主要的平行光 (Directional Light)")]
+    [Header("Cinemachine Camera Configuration")]
+    public MonoBehaviour cinemachineCamera;
+
+    public MonoBehaviour firstPersonCamera => cinemachineCamera;
+    public MonoBehaviour thirdPersonCamera => cinemachineCamera;
+    public MonoBehaviour timelineCamera => cinemachineCamera;
+
+    [Header("Mixed Lighting Configuration")]
     public Light mainDirectionalLight;
-    [Tooltip("請拖入區域光 (Area Light)")]
     public Light mainAreaLight;
-    [Tooltip("遊戲啟動時預設載入的光照配置名稱 (例如：LightingData_Night)")]
     public string defaultLightingConfigName = "LightingData_Night";
 
-    [Header("光照 Preset 列表")]
+    [Header("Lighting Preset List")]
     public List<GameLightingPreset> lightingPresets = new List<GameLightingPreset>
     {
         new GameLightingPreset
@@ -78,23 +84,20 @@ public class GameManager : MonoBehaviour
         }
     };
 
-    [Header("Skybox 配置")]
-    [Tooltip("請拖入主要的 Skybox 材質球")]
+    [Header("Skybox Configuration")]
     public Material skyboxMaterial;
-    [Tooltip("圖片在 Resources 資料夾中的相對路徑，例如：Skyboxes/")]
-    public string skyboxResourcesPath = "Skyboxes/";
+    public string skyboxResourcesPath = "Skybox/";
 
-    [Header("數據與過渡配置")]
+    [Header("Data and Transition Configuration")]
     public string csvResourcePath = "SceneConfig";
     public CanvasGroup fadeGroup;
     public float fadeDuration = 0.5f;
     public float bufferTime = 0.5f;
 
-    [Header("動態生成生成點")]
+    [Header("Dynamic Spawn Holder")]
     public Transform environmentHolder;
 
-    [Header("相機與物理控制配置")]
-    [Tooltip("如果你的相機有掛載自訂的移動/旋轉控制腳本，請拖入此欄位。")]
+    [Header("Camera and Controls Configuration")]
     public MonoBehaviour[] cameraControlScripts;
 
     private bool isWaitingForChoice = false;
@@ -119,14 +122,62 @@ public class GameManager : MonoBehaviour
 
     private bool isWaitingForTimelineClick = false;
     private bool isTimelineCutsceneActive = false;
+    private bool isSwitchingTimeline = false;
 
-    // 用於在劇情中暫時關閉組件，結束後復原
     private List<CharacterController> disabledControllers = new List<CharacterController>();
     private List<MonoBehaviour> disabledCinemachineCameras = new List<MonoBehaviour>();
     private List<MonoBehaviour> disabledPlayerControlScripts = new List<MonoBehaviour>();
 
-    // 用於儲存並復原 Animator 的 Root Motion 狀態
     private Dictionary<Animator, bool> originalRootMotionStates = new Dictionary<Animator, bool>();
+
+    private void OnEnable()
+    {
+        if (globalDirector != null)
+        {
+            globalDirector.stopped += OnTimelineStopped;
+        }
+    }
+
+    private void OnDisable()
+    {
+        if (globalDirector != null)
+        {
+            globalDirector.stopped -= OnTimelineStopped;
+        }
+    }
+
+    private void OnTimelineStopped(PlayableDirector director)
+    {
+        if (isSwitchingTimeline) return;
+
+        string timelineName = (director != null && director.playableAsset != null) ? director.playableAsset.name : "Unknown";
+        Debug.Log("[Timeline Debug] OnTimelineStopped triggered for: " + timelineName);
+
+        if (isTimelineCutsceneActive)
+        {
+            isTimelineCutsceneActive = false;
+            SetTimelineSystemOverride(false);
+
+            if (!isWaitingForTimelineClick)
+            {
+                if (story != null)
+                {
+                    if (story.canContinue)
+                    {
+                        ContinueStory();
+                    }
+                    else if (story.currentChoices.Count > 0)
+                    {
+                        StartCoroutine(ToggleChoiceUI(true));
+                    }
+                    else
+                    {
+                        CheckAndEndCutscene();
+                    }
+                }
+            }
+        }
+    }
 
     void Awake()
     {
@@ -158,9 +209,17 @@ public class GameManager : MonoBehaviour
                 List<MonoBehaviour> foundScripts = new List<MonoBehaviour>();
                 foreach (var script in mainCam.GetComponents<MonoBehaviour>())
                 {
-                    if (script != null && script.GetType().Namespace != "UnityEngine")
+                    if (script != null)
                     {
-                        foundScripts.Add(script);
+                        string scriptName = script.GetType().Name;
+                        string scriptNamespace = script.GetType().Namespace ?? "";
+
+                        if (scriptNamespace != "UnityEngine" &&
+                            scriptName != "CinemachineBrain" &&
+                            !scriptName.Contains("Cinemachine"))
+                        {
+                            foundScripts.Add(script);
+                        }
                     }
                 }
                 cameraControlScripts = foundScripts.ToArray();
@@ -170,7 +229,6 @@ public class GameManager : MonoBehaviour
 
     void Start()
     {
-        // 1. 遊戲啟動時直接套用預設光照配置
         if (!string.IsNullOrEmpty(defaultLightingConfigName))
         {
             ParseAndSwapLightingData(defaultLightingConfigName);
@@ -182,6 +240,11 @@ public class GameManager : MonoBehaviour
         story.ObserveVariable("scene", (varName, newValue) => {
             StartCoroutine(SceneTransition((int)newValue));
         });
+
+        if (!string.IsNullOrEmpty(startingKnot))
+        {
+            story.ChoosePathString(startingKnot);
+        }
 
         ContinueStory();
     }
@@ -233,6 +296,10 @@ public class GameManager : MonoBehaviour
             {
                 ContinueStory();
             }
+            else if (story.currentChoices.Count > 0 && !isTimelineCutsceneActive)
+            {
+                StartCoroutine(ToggleChoiceUI(true));
+            }
         }
     }
 
@@ -241,15 +308,64 @@ public class GameManager : MonoBehaviour
         if (cameraControlScripts == null) return;
         foreach (var script in cameraControlScripts)
         {
-            if (script != null && script.enabled != isActive)
+            if (script != null)
             {
-                script.enabled = isActive;
+                if (script.GetType().Name == "CinemachineBrain") continue;
+
+                if (script.enabled != isActive)
+                {
+                    script.enabled = isActive;
+                }
             }
         }
     }
 
+    private GameObject FindGameObject(string name)
+    {
+        if (string.IsNullOrEmpty(name)) return null;
+
+        if (allSceneObjects.ContainsKey(name) && allSceneObjects[name] != null)
+        {
+            return allSceneObjects[name].gameObject;
+        }
+
+        if (environmentHolder != null)
+        {
+            Transform[] childTransforms = environmentHolder.GetComponentsInChildren<Transform>(true);
+            foreach (var t in childTransforms)
+            {
+                if (t != null && t.name == name) return t.gameObject;
+            }
+        }
+
+        Scene activeScene = SceneManager.GetActiveScene();
+        GameObject[] rootObjects = activeScene.GetRootGameObjects();
+        foreach (var root in rootObjects)
+        {
+            Transform[] transforms = root.GetComponentsInChildren<Transform>(true);
+            foreach (var t in transforms)
+            {
+                if (t != null && t.name == name) return t.gameObject;
+            }
+        }
+
+        return null;
+    }
+
     private void SetTimelineSystemOverride(bool overrideActive)
     {
+        if (taskText != null)
+        {
+            if (overrideActive)
+            {
+                taskText.gameObject.SetActive(false);
+            }
+            else if (!string.IsNullOrEmpty(currentTaskTitle))
+            {
+                taskText.gameObject.SetActive(true);
+            }
+        }
+
         if (overrideActive)
         {
             disabledControllers.Clear();
@@ -287,15 +403,6 @@ public class GameManager : MonoBehaviour
                         script.enabled = false;
                         disabledPlayerControlScripts.Add(script);
                     }
-
-                    if (typeName.Contains("CinemachineFreeLook") || typeName.Contains("CinemachineVirtualCamera"))
-                    {
-                        if (globalDirector != null && script.transform.root != globalDirector.transform.root)
-                        {
-                            script.enabled = false;
-                            disabledCinemachineCameras.Add(script);
-                        }
-                    }
                 }
             }
         }
@@ -330,24 +437,46 @@ public class GameManager : MonoBehaviour
             }
             originalRootMotionStates.Clear();
         }
+
+        if (InspectManager.Instance != null)
+        {
+            InspectManager.Instance.SetTimelinePlaying(overrideActive);
+        }
     }
 
     public void OnTimelinePauseSignalReached()
     {
+        string timelineName = (globalDirector != null && globalDirector.playableAsset != null) ? globalDirector.playableAsset.name : "Unknown";
+        Debug.Log("[Timeline Debug] Pause Signal Reached on Timeline: " + timelineName);
+
         if (globalDirector != null)
         {
             globalDirector.Pause();
         }
         isWaitingForTimelineClick = true;
+
+        if (story != null && story.canContinue && dialogueText != null && string.IsNullOrWhiteSpace(dialogueText.text))
+        {
+            ContinueStory();
+        }
     }
 
     private void AdvanceTimelineAndDialogue()
     {
+        Debug.Log("[Timeline Debug] Advancing Timeline and Dialogue from pause state.");
         isWaitingForTimelineClick = false;
 
         if (story.canContinue)
         {
             ContinueStory();
+            if (globalDirector != null && globalDirector.state == PlayState.Paused)
+            {
+                globalDirector.Play();
+            }
+        }
+        else if (story.currentChoices.Count > 0)
+        {
+            StartCoroutine(ToggleChoiceUI(true));
             if (globalDirector != null && globalDirector.state == PlayState.Paused)
             {
                 globalDirector.Play();
@@ -363,6 +492,7 @@ public class GameManager : MonoBehaviour
     {
         if (!story.canContinue && story.currentChoices.Count == 0)
         {
+            Debug.Log("[Timeline Debug] Cutscene conditions ended. Cleaning up Timeline state.");
             if (isTimelineCutsceneActive)
             {
                 isTimelineCutsceneActive = false;
@@ -383,38 +513,63 @@ public class GameManager : MonoBehaviour
     private void ContinueStory()
     {
         string text = "";
-        do
-        {
-            if (!story.canContinue) break;
+        bool foundText = false;
 
+        while (story.canContinue)
+        {
             text = story.Continue().Trim();
             HandleTags(story.currentTags);
 
-            if (isTransitioning) break;
+            if (!string.IsNullOrWhiteSpace(text) && text != ".")
+            {
+                foundText = true;
+            }
 
-        } while ((string.IsNullOrWhiteSpace(text) || text == ".") && story.canContinue);
+            if (isTransitioning || isTimelineCutsceneActive)
+            {
+                break;
+            }
+
+            if (foundText)
+            {
+                break;
+            }
+        }
 
         if (isTransitioning) return;
 
-        if (!string.IsNullOrWhiteSpace(text))
+        if (foundText)
         {
-            if (text == ".") dialogueText.text = "";
-            else dialogueText.text = text;
-
+            if (dialogueText != null)
+            {
+                if (text == ".") dialogueText.text = "";
+                else dialogueText.text = text;
+            }
             currentTargetObjectName = "";
         }
         else
         {
-            if (text == "" || text == ".") dialogueText.text = "";
+            if (text == "" || text == ".")
+            {
+                if (dialogueText != null) dialogueText.text = "";
+            }
         }
 
-        if (!story.canContinue && story.currentChoices.Count > 0)
+        if (!story.canContinue)
         {
-            StartCoroutine(ToggleChoiceUI(true));
-        }
-        else if (!story.canContinue && story.currentChoices.Count == 0)
-        {
-            if (!isTimelineCutsceneActive)
+            if (isTimelineCutsceneActive)
+            {
+                return;
+            }
+
+            if (story.currentChoices.Count > 0)
+            {
+                if (string.IsNullOrWhiteSpace(text) || text == ".")
+                {
+                    StartCoroutine(ToggleChoiceUI(true));
+                }
+            }
+            else
             {
                 CheckAndEndCutscene();
             }
@@ -510,11 +665,16 @@ public class GameManager : MonoBehaviour
                     continue;
                 }
 
-                if (allSceneObjects.ContainsKey(id))
+                GameObject targetGo = FindGameObject(id);
+                if (targetGo != null)
                 {
-                    allSceneObjects[id].gameObject.SetActive(active);
-                    allSceneObjects[id].isInteractable = active;
-                    if (!string.IsNullOrEmpty(knot)) allSceneObjects[id].targetKnot = knot;
+                    targetGo.SetActive(active);
+                    var io = targetGo.GetComponent<InteractableObject>();
+                    if (io != null)
+                    {
+                        io.isInteractable = active;
+                        if (!string.IsNullOrEmpty(knot)) io.targetKnot = knot;
+                    }
                 }
             }
         }
@@ -538,14 +698,9 @@ public class GameManager : MonoBehaviour
 
     void ExecuteTagsReal(List<string> tags)
     {
-        foreach (string tag in tags)
-        {
-            if (tag.Trim() == "fade")
-            {
-                StartCoroutine(ManualFadeSequence());
-                return;
-            }
-        }
+        if (tags == null || tags.Count == 0) return;
+
+        FadeType pendingFade = FadeType.None;
 
         foreach (string tag in tags)
         {
@@ -568,41 +723,115 @@ public class GameManager : MonoBehaviour
         foreach (string tag in tags)
         {
             string cleanTag = tag.Trim();
-            if (cleanTag.Contains(".prefab.")) continue;
-            if (cleanTag.Contains(".SetActive.")) continue;
 
-            if (cleanTag.StartsWith("Skybox."))
+            if (cleanTag.Equals("fade.Out", System.StringComparison.OrdinalIgnoreCase))
             {
-                ParseAndSwapSkybox(cleanTag);
+                pendingFade = FadeType.Out;
+                continue;
             }
-            else if (cleanTag.StartsWith("LightingData_") || cleanTag.StartsWith("LightingData."))
+            else if (cleanTag.Equals("fade.In", System.StringComparison.OrdinalIgnoreCase))
             {
-                ParseAndSwapLightingData(cleanTag);
+                pendingFade = FadeType.In;
+                continue;
             }
-            else if (cleanTag.StartsWith("Emitter"))
+            else if (cleanTag.Equals("fade", System.StringComparison.OrdinalIgnoreCase))
             {
-                ParseAndJumpToEmitter(cleanTag);
+                pendingFade = FadeType.Full;
+                continue;
             }
-            else if (cleanTag == "InteractableObject.non-interactable")
+
+            if (cleanTag.Contains(".prefab.") || cleanTag.Contains(".SetActive."))
             {
-                SetAllObjectsInteractable(false);
+                continue;
             }
-            else if (cleanTag.StartsWith("Task.text."))
+
+            switch (cleanTag)
             {
-                ParseAndSetTask(cleanTag);
+                case string s when s.Equals("InteractableObject.non-interactable", System.StringComparison.OrdinalIgnoreCase):
+                    SetAllObjectsInteractable(false);
+                    break;
+                case string s when s.StartsWith("Skybox.", System.StringComparison.OrdinalIgnoreCase):
+                    ParseAndSwapSkybox(cleanTag);
+                    break;
+                case string s when s.StartsWith("camera.", System.StringComparison.OrdinalIgnoreCase):
+                    ParseAndSwitchCamera(cleanTag);
+                    break;
+                case string s when s.StartsWith("LightingData_", System.StringComparison.OrdinalIgnoreCase) || s.StartsWith("LightingData.", System.StringComparison.OrdinalIgnoreCase):
+                    ParseAndSwapLightingData(cleanTag);
+                    break;
+                case string s when s.StartsWith("Emitter", System.StringComparison.OrdinalIgnoreCase):
+                    ParseAndJumpToEmitter(cleanTag);
+                    break;
+                case string s when s.StartsWith("Task.text.", System.StringComparison.OrdinalIgnoreCase):
+                    ParseAndSetTask(cleanTag);
+                    break;
+                case string s when s.Contains(".mode."):
+                    ParseAndSetObjectMode(cleanTag);
+                    break;
+                case string s when s.Contains(".material."):
+                    ParseAndSwapMaterial(cleanTag);
+                    break;
+                case string s when s.Contains(".timeline."):
+                    ParseAndPlayTimeline(cleanTag);
+                    break;
+                default:
+                    ParseObjectAttributes(cleanTag);
+                    break;
             }
-            else if (cleanTag.Contains(".material."))
-            {
-                ParseAndSwapMaterial(cleanTag);
-            }
-            else if (cleanTag.Contains(".timeline."))
-            {
-                ParseAndPlayTimeline(cleanTag);
-            }
-            else
-            {
-                ParseObjectAttributes(cleanTag);
-            }
+        }
+
+        switch (pendingFade)
+        {
+            case FadeType.Full:
+                StartCoroutine(ManualFadeSequence());
+                break;
+            case FadeType.Out:
+                StartCoroutine(FadeOutSequence());
+                break;
+            case FadeType.In:
+                StartCoroutine(FadeInSequence());
+                break;
+        }
+    }
+
+    void ParseAndSetObjectMode(string tag)
+    {
+        string[] split = tag.Split(new string[] { ".mode." }, System.StringSplitOptions.None);
+        if (split.Length < 2) return;
+
+        string objName = split[0].Trim();
+        string modeStr = split[1].Trim();
+
+        GameObject targetGo = FindGameObject(objName);
+
+        if (targetGo == null)
+        {
+            Debug.LogWarning("[GameManager Warning] Target object '" + objName + "' not found for mode switch.");
+            return;
+        }
+
+        var interactor = targetGo.GetComponent<InteractableObject>();
+        var inspector = targetGo.GetComponent("InspectableObject") as MonoBehaviour;
+
+        if (modeStr.Equals("Inspector", System.StringComparison.OrdinalIgnoreCase))
+        {
+            if (interactor != null) interactor.enabled = false;
+            if (inspector != null) inspector.enabled = true;
+            Debug.Log("[GameManager Debug] Switched '" + objName + "' to Inspector mode.");
+        }
+        else if (modeStr.Equals("Interactor", System.StringComparison.OrdinalIgnoreCase))
+        {
+            if (interactor != null) interactor.enabled = true;
+            if (inspector != null) inspector.enabled = false;
+            Debug.Log("[GameManager Debug] Switched '" + objName + "' to Interactor mode.");
+        }
+    }
+
+    void ParseAndSwitchCamera(string tag)
+    {
+        if (cinemachineCamera != null)
+        {
+            cinemachineCamera.enabled = true;
         }
     }
 
@@ -633,13 +862,10 @@ public class GameManager : MonoBehaviour
         }
         else
         {
-            Debug.LogWarning($"[Skybox 警告] 找不到圖片資源！請確認圖片已放置於：Assets/Resources/{skyboxResourcesPath}{imageName}");
+            Debug.LogWarning("[Skybox Warning] Image not found in: Resources/" + skyboxResourcesPath + imageName);
         }
     }
 
-    /// <summary>
-    /// 解析 Ink 標籤並比對預設好的 Preset 光照配置
-    /// </summary>
     void ParseAndSwapLightingData(string tag)
     {
         string targetConfigName = tag.Trim();
@@ -665,16 +891,12 @@ public class GameManager : MonoBehaviour
         }
         else
         {
-            Debug.LogWarning($"[LightingPreset 警告] 找不到與 '{targetConfigName}' 對應的光照配置！");
+            Debug.LogWarning("[LightingPreset Warning] Cannot find lighting config: '" + targetConfigName + "'");
         }
     }
 
-    /// <summary>
-    /// 在 Runtime 即時套用指定的太陽光、Area Light、環境光與 Skybox 屬性
-    /// </summary>
     private void ApplyLightingConfig(GameLightingPreset config)
     {
-        // 1. 調整主太陽光屬性 (顏色、強度、旋轉角度)
         if (mainDirectionalLight != null)
         {
             mainDirectionalLight.color = config.lightColor;
@@ -682,24 +904,20 @@ public class GameManager : MonoBehaviour
             mainDirectionalLight.transform.eulerAngles = config.lightRotation;
         }
 
-        //  1.5 調整 Area Light 屬性 (顏色與強度)
         if (mainAreaLight != null)
         {
             mainAreaLight.color = config.areaLightColor;
             mainAreaLight.intensity = config.areaLightIntensity;
         }
 
-        // 2. 調整全域環境光
         RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
         RenderSettings.ambientLight = config.ambientLightColor;
 
-        // 3. 切換 Skybox 貼圖
         if (!string.IsNullOrEmpty(config.skyboxImageName))
         {
             ParseAndSwapSkybox("Skybox." + config.skyboxImageName);
         }
 
-        // 4. 強制刷新全域 GI 環境
         DynamicGI.UpdateEnvironment();
     }
 
@@ -767,6 +985,8 @@ public class GameManager : MonoBehaviour
         {
             double targetTime = allEmitters[arrayIndex].time;
 
+            Debug.Log("[Timeline Debug] Jumping to Emitter index: " + targetEmitterIndex + " at time: " + targetTime);
+
             if (!isTimelineCutsceneActive)
             {
                 isTimelineCutsceneActive = true;
@@ -783,7 +1003,7 @@ public class GameManager : MonoBehaviour
         }
         else
         {
-            Debug.LogWarning($"[Timeline 警告] 找不到第 {targetEmitterIndex} 個 Emitter！目前 Timeline 共有 {allEmitters.Count} 個 Emitter。");
+            Debug.LogWarning("[Timeline Warning] Emitter index " + targetEmitterIndex + " not found!");
         }
     }
 
@@ -795,27 +1015,17 @@ public class GameManager : MonoBehaviour
         string objName = split[0].Trim();
         bool targetState = (split[1].Trim().ToLower() == "true");
 
-        GameObject targetGo = null;
-
-        if (allSceneObjects.ContainsKey(objName) && allSceneObjects[objName] != null)
-        {
-            targetGo = allSceneObjects[objName].gameObject;
-        }
-        else
-        {
-            if (environmentHolder != null)
-            {
-                Transform foundTx = environmentHolder.Find(objName);
-                if (foundTx != null) targetGo = foundTx.gameObject;
-            }
-            if (targetGo == null) targetGo = GameObject.Find(objName);
-        }
+        GameObject targetGo = FindGameObject(objName);
 
         if (targetGo != null)
         {
             targetGo.SetActive(targetState);
             var io = targetGo.GetComponent<InteractableObject>();
             if (io != null) io.isInteractable = targetState;
+        }
+        else
+        {
+            Debug.LogWarning("[GameManager Warning] Target object '" + objName + "' not found for SetActive.");
         }
     }
 
@@ -868,7 +1078,7 @@ public class GameManager : MonoBehaviour
             taskText.fontSize = originalFontSize;
             taskText.color = originalColor;
             taskText.alignment = TextAlignmentOptions.Left;
-            taskText.text = "目前任務：" + currentTaskTitle;
+            taskText.text = "Task: " + currentTaskTitle;
         }
         StartCoroutine(ResetPopupFlag());
     }
@@ -907,9 +1117,13 @@ public class GameManager : MonoBehaviour
                 currentTaskTitle = taskID;
                 currentTaskFullContent = data[1].Trim();
 
-                if (taskText != null && !isTaskPopupOpen)
+                if (taskText != null)
                 {
-                    taskText.text = "目前任務：" + currentTaskTitle;
+                    taskText.gameObject.SetActive(true);
+                    if (!isTaskPopupOpen)
+                    {
+                        taskText.text = "Task: " + currentTaskTitle;
+                    }
                 }
                 break;
             }
@@ -934,23 +1148,7 @@ public class GameManager : MonoBehaviour
         string oldTargetKnot = "";
         Transform oldParentNode = environmentHolder;
 
-        GameObject oldGo = null;
-
-        if (allSceneObjects.ContainsKey(objName) && allSceneObjects[objName] != null)
-        {
-            oldGo = allSceneObjects[objName].gameObject;
-            oldTargetKnot = allSceneObjects[objName].targetKnot;
-        }
-        else
-        {
-            Transform fallbackTx = environmentHolder.Find(objName);
-            if (fallbackTx != null)
-            {
-                oldGo = fallbackTx.gameObject;
-                var io = fallbackTx.GetComponent<InteractableObject>();
-                if (io != null) oldTargetKnot = io.targetKnot;
-            }
-        }
+        GameObject oldGo = FindGameObject(objName);
 
         if (oldGo != null)
         {
@@ -960,6 +1158,9 @@ public class GameManager : MonoBehaviour
             oldLayer = oldGo.layer;
             oldTag = oldGo.tag;
             oldParentNode = oldGo.transform.parent;
+
+            var io = oldGo.GetComponent<InteractableObject>();
+            if (io != null) oldTargetKnot = io.targetKnot;
 
             Destroy(oldGo);
             allSceneObjects.Remove(objName);
@@ -1013,15 +1214,7 @@ public class GameManager : MonoBehaviour
 
         if (string.IsNullOrEmpty(targetObjectName)) return;
 
-        GameObject targetGo = null;
-        if (allSceneObjects.ContainsKey(targetObjectName) && allSceneObjects[targetObjectName] != null)
-        {
-            targetGo = allSceneObjects[targetObjectName].gameObject;
-        }
-        else
-        {
-            targetGo = GameObject.Find(targetObjectName);
-        }
+        GameObject targetGo = FindGameObject(targetObjectName);
 
         if (targetGo == null) return;
 
@@ -1071,9 +1264,7 @@ public class GameManager : MonoBehaviour
         string objName = split[0].Trim();
         string materialName = split[1].Trim();
 
-        GameObject targetGo = null;
-        if (allSceneObjects.ContainsKey(objName)) targetGo = allSceneObjects[objName].gameObject;
-        else targetGo = GameObject.Find(objName);
+        GameObject targetGo = FindGameObject(objName);
 
         if (targetGo != null)
         {
@@ -1088,7 +1279,12 @@ public class GameManager : MonoBehaviour
 
     void ParseAndPlayTimeline(string tag)
     {
-        if (globalDirector == null) return;
+        if (globalDirector == null)
+        {
+            Debug.LogError("[Timeline Error] globalDirector is null!");
+            return;
+        }
+
         string[] split = tag.Split(new string[] { ".timeline." }, System.StringSplitOptions.None);
         if (split.Length < 2) return;
 
@@ -1099,15 +1295,21 @@ public class GameManager : MonoBehaviour
         {
             if (globalDirector.playableAsset == timelineAsset && isTimelineCutsceneActive)
             {
+                Debug.Log("[Timeline Debug] Already playing Timeline: " + timelineName + ", skipping restart.");
                 return;
             }
+
+            Debug.Log("[Timeline Debug] Starting Timeline: " + timelineName);
 
             isTimelineCutsceneActive = true;
             isWaitingForTimelineClick = false;
 
             SetTimelineSystemOverride(true);
 
+            isSwitchingTimeline = true;
             globalDirector.Stop();
+            isSwitchingTimeline = false;
+
             globalDirector.playableAsset = timelineAsset;
 
             TimelineAsset timeline = timelineAsset as TimelineAsset;
@@ -1127,7 +1329,7 @@ public class GameManager : MonoBehaviour
         }
         else
         {
-            Debug.LogError($"[Timeline 錯誤] 找不到 Timeline 資源！請確認檔案是否存在於：Assets/Resources/Timelines/{timelineName}");
+            Debug.LogError("[Timeline Error] Cannot find asset at: Resources/Timelines/" + timelineName);
         }
     }
 
@@ -1154,6 +1356,42 @@ public class GameManager : MonoBehaviour
         {
             if (!allSceneObjects.ContainsKey(obj.name)) allSceneObjects[obj.name] = obj;
         }
+    }
+
+    private enum FadeType
+    {
+        None,
+        Full,
+        Out,
+        In
+    }
+
+    IEnumerator FadeOutSequence()
+    {
+        isWaitingForChoice = true;
+        isTransitioning = true;
+
+        yield return new WaitForSeconds(bufferTime);
+        yield return Fade(1f);
+
+        isTransitioning = false;
+        isWaitingForChoice = false;
+
+        ContinueStory();
+    }
+
+    IEnumerator FadeInSequence()
+    {
+        isWaitingForChoice = true;
+        isTransitioning = true;
+
+        yield return Fade(0f);
+        yield return new WaitForSeconds(bufferTime);
+
+        isTransitioning = false;
+        isWaitingForChoice = false;
+
+        ContinueStory();
     }
 
     IEnumerator Fade(float targetAlpha)
@@ -1188,17 +1426,55 @@ public class GameManager : MonoBehaviour
 
     bool DetectObjectClick()
     {
-        Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
-        if (Physics.Raycast(ray, out RaycastHit hit))
+        if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject())
         {
-            var interactable = hit.collider.GetComponent<InteractableObject>();
-            if (interactable && interactable.isInteractable)
+            Debug.Log("[GameManager Debug] Click ignored because mouse is over UI.");
+            return false;
+        }
+
+        Camera mainCam = Camera.main;
+        if (mainCam == null)
+        {
+            Debug.LogWarning("[GameManager Debug] MainCamera not found!");
+            return false;
+        }
+
+        Ray ray = mainCam.ScreenPointToRay(Input.mousePosition);
+        if (Physics.Raycast(ray, out RaycastHit hit, 100f))
+        {
+            InteractableObject interactable = hit.collider.GetComponent<InteractableObject>();
+            if (interactable == null) interactable = hit.collider.GetComponentInChildren<InteractableObject>();
+            if (interactable == null) interactable = hit.collider.GetComponentInParent<InteractableObject>();
+
+            if (interactable != null)
             {
+                if (!interactable.enabled || !interactable.isInteractable)
+                {
+                    Debug.LogWarning("[GameManager Debug] Hit [" + interactable.name + "], but component is disabled or isInteractable is FALSE.");
+                    return false;
+                }
+
+                if (string.IsNullOrEmpty(interactable.targetKnot))
+                {
+                    Debug.LogWarning("[GameManager Debug] Hit [" + interactable.name + "], but targetKnot is EMPTY.");
+                    return false;
+                }
+
+                Debug.Log("[GameManager Debug] Interacted with: " + interactable.name + ", jumping to knot: " + interactable.targetKnot);
                 story.ChoosePathString(interactable.targetKnot);
                 ContinueStory();
                 return true;
             }
+            else
+            {
+                Debug.Log("[GameManager Debug] Hit [" + hit.collider.name + "], but no InteractableObject component found.");
+            }
         }
+        else
+        {
+            Debug.Log("[GameManager Debug] Raycast missed all 3D colliders.");
+        }
+
         return false;
     }
 

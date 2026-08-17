@@ -1,7 +1,6 @@
 === Scene2_start ===
 .# phone.prefab.smile
 .#phone.TargetKnot="Test"
-//.#Area Light.prefab.Yellow
 .#Front door.TargetKnot="Answer_the_door"
 .#Task.text.應門
 

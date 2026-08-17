@@ -1,6 +1,5 @@
 using UnityEngine;
 using TMPro;
-using System.Collections.Generic;
 
 public class LabelGenerator : MonoBehaviour
 {
@@ -46,11 +45,13 @@ public class LabelGenerator : MonoBehaviour
 
     void SpawnLabel(string text, Transform target)
     {
-        // 1. 生成標籤，並直接設為目標物件的子物體，這樣目標移動時標籤會跟著動
+        // 1. 計算目標物件的世界座標位置 (加上 yOffset)
         Vector3 spawnPos = target.position + Vector3.up * yOffset;
-        GameObject newLabel = Instantiate(labelPrefab, spawnPos, Quaternion.identity, target);
 
-        // 2. 修改文字
+        // 2. 生成標籤，將父物件設為 LabelGenerator 自身的 Transform (transform)
+        GameObject newLabel = Instantiate(labelPrefab, spawnPos, Quaternion.identity, transform);
+
+        // 3. 修改文字
         TextMeshPro tmp = newLabel.GetComponentInChildren<TextMeshPro>();
         if (tmp != null)
         {

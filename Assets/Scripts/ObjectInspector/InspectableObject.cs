@@ -1,83 +1,83 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
-#region 1. 數據結構
-[System.Serializable]
-public struct SubObjectInfo
+[Serializable]
+public class SubObjectInfo
 {
-    [Header("子物件與識別")]
-    public GameObject subObjectMesh; // 子物件的 GameObject (必須含有 Collider)
-    public string subObjectID;       // 子物件識別碼 (例如: Sub_Part1)
-
-    [HideInInspector]
-    public bool isFound;             // 內部標記：此線索是否已被找出
+    public string subID;          // 線索唯一識別碼（例如: "73N_Tracking"）
+    public GameObject subGameObject;
+    public bool isFound = false;   // 是否在 3D 檢視中找到
+    public bool isVerified = false;// 是否在打詐網完成文字比對
 }
-#endregion
 
-/// <summary>
-/// 掛載在場景中的 3D 可檢視物件本體上，負責存放線索資料與觸發檢視
-/// </summary>
 public class InspectableObject : MonoBehaviour
 {
-    [Header("主物件 (證據) 基礎配置")]
-    public string mainInfoID = "Evidence_MainObject";
-
-    [Header("主物件縮圖與裁切設定")]
-    [Tooltip("請直接將主物件在線索欄要顯示的 Sprite 圖片拖入此處")]
+    public string mainInfoID;
     public Sprite mainSprite;
+    public bool useCustomCrop;
+    public Rect cropRect;
+    public bool isMainEvidenceUnlocked;
 
-    [Tooltip("勾選後可以指定要顯示圖片中的哪一個區域")]
-    public bool useCustomCrop = false;
-
-    [Tooltip("像素座標與尺寸：X (左), Y (下), Width (寬), Height (高)")]
-    public Rect cropRect = new Rect(0, 0, 100, 100);
-
-    [Header("需尋找的子物件線索列表")]
     public List<SubObjectInfo> subObjectInfos = new List<SubObjectInfo>();
 
-    [HideInInspector] public bool isMainEvidenceUnlocked = false;
+    /// <summary>
+    /// 當物件被 Instantiate 複製時（如 3D 檢視模式生成的 Clone），
+    /// 重新將 subGameObject 的引用綁定到複製體內部的對應子物件上。
+    /// </summary>
+    /// 
 
-    private void OnMouseDown()
+    private void Start()
     {
-        if (InspectManager.Instance != null)
-        {
-            Debug.Log($"[場景探索] 點擊主物件 {gameObject.name}，開啟檢視器！");
-            InspectManager.Instance.StartInspect(this);
-        }
-        else
-        {
-            Debug.LogError("[InspectableObject] 場景中找不到 InspectManager 單例！");
-        }
+        
     }
-
-    #region 輔助方法
-    public bool TryGetSubObjectInfo(GameObject hitSubObject, out SubObjectInfo foundInfo, out int listIndex)
+    public void RebindClonedReferences()
     {
-        for (int i = 0; i < subObjectInfos.Count; i++)
+        foreach (var sub in subObjectInfos)
         {
-            if (subObjectInfos[i].subObjectMesh != null &&
-                subObjectInfos[i].subObjectMesh.name == hitSubObject.name)
+            if (sub.subGameObject != null)
             {
-                foundInfo = subObjectInfos[i];
-                listIndex = i;
-                return true;
+                string targetName = sub.subGameObject.name;
+
+                // 在複製體自身的子物件樹中尋找同名 Transform
+                Transform foundTransform = FindChildByName(transform, targetName);
+                if (foundTransform != null)
+                {
+                    sub.subGameObject = foundTransform.gameObject;
+                }
             }
         }
-        foundInfo = default;
-        listIndex = -1;
-        return false;
     }
 
-    public void MarkAsFound(int index)
+    /// <summary>
+    /// 遞迴尋找同名的子物件 Transform
+    /// </summary>
+    private Transform FindChildByName(Transform parent, string targetName)
     {
-        if (index >= 0 && index < subObjectInfos.Count)
+        foreach (Transform child in parent)
         {
-            SubObjectInfo info = subObjectInfos[index];
-            info.isFound = true;
-            subObjectInfos[index] = info;
+            if (child.name == targetName)
+                return child;
+
+            Transform result = FindChildByName(child, targetName);
+            if (result != null)
+                return result;
         }
+        return null;
     }
 
+    // 檢查是否已在 3D 畫面中找齊所有線索
+    public bool IsAllSubObjectsFound()
+    {
+        if (subObjectInfos.Count == 0) return true;
+        foreach (var sub in subObjectInfos)
+        {
+            if (!sub.isFound) return false;
+        }
+        return true;
+    }
+
+    // 取得已在 3D 檢視中找到 (Found) 的數量，作為 UI 進度條填滿的依據
     public int GetFoundCount()
     {
         int count = 0;
@@ -87,5 +87,76 @@ public class InspectableObject : MonoBehaviour
         }
         return count;
     }
-    #endregion
+
+    /// <summary>
+    /// 精確且具備相容性的子物件判定邏輯
+    /// </summary>
+    public bool TryGetSubObjectInfo(GameObject hitObj, out SubObjectInfo foundInfo, out int index)
+    {
+        if (hitObj == null)
+        {
+            foundInfo = null;
+            index = -1;
+            return false;
+        }
+
+        for (int i = 0; i < subObjectInfos.Count; i++)
+        {
+            var sub = subObjectInfos[i];
+            if (sub.subGameObject == null) continue;
+
+            // 1. 精確物件引用比對
+            if (sub.subGameObject == hitObj)
+            {
+                foundInfo = sub;
+                index = i;
+                return true;
+            }
+
+            // 2. 階層比對：若 Raycast 擊中的是 subGameObject 內部的 Mesh 或 Collider
+            if (hitObj.transform.IsChildOf(sub.subGameObject.transform))
+            {
+                foundInfo = sub;
+                index = i;
+                return true;
+            }
+
+            // 3. 名稱彈性比對 (防護機制：確保 Clone 後名稱一致即可被精確點擊)
+            if (hitObj.name == sub.subGameObject.name)
+            {
+                foundInfo = sub;
+                index = i;
+                return true;
+            }
+        }
+
+        foundInfo = null;
+        index = -1;
+        return false;
+    }
+
+    public void MarkAsFound(int index)
+    {
+        if (index >= 0 && index < subObjectInfos.Count)
+        {
+            subObjectInfos[index].isFound = true;
+        }
+    }
+
+    // --- 供 VirtualBrowserController 呼叫的比對驗證邏輯 ---
+    public bool TryVerifySubInfo(string targetSubID)
+    {
+        foreach (var sub in subObjectInfos)
+        {
+            if (sub.subID == targetSubID)
+            {
+                if (!sub.isVerified)
+                {
+                    sub.isVerified = true; // 標記比對成功
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
 }
