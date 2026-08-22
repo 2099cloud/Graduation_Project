@@ -12,21 +12,6 @@ using System.Linq;
 
 public class GameManager : MonoBehaviour
 {
-    [System.Serializable]
-    public struct GameLightingPreset
-    {
-        public string configName;
-        public Color lightColor;
-        public float lightIntensity;
-        public Vector3 lightRotation;
-        public Color ambientLightColor;
-        public string skyboxImageName;
-
-        [Header("Area Light Configuration")]
-        public Color areaLightColor;
-        public float areaLightIntensity;
-    }
-
     [Header("Ink Configuration")]
     public TextAsset inkJsonAsset;
     [Tooltip("Starting knot name when game begins.")]
@@ -51,42 +36,6 @@ public class GameManager : MonoBehaviour
     public MonoBehaviour firstPersonCamera => cinemachineCamera;
     public MonoBehaviour thirdPersonCamera => cinemachineCamera;
     public MonoBehaviour timelineCamera => cinemachineCamera;
-
-    [Header("Mixed Lighting Configuration")]
-    public Light mainDirectionalLight;
-    public Light mainAreaLight;
-    public string defaultLightingConfigName = "LightingData_Night";
-
-    [Header("Lighting Preset List")]
-    public List<GameLightingPreset> lightingPresets = new List<GameLightingPreset>
-    {
-        new GameLightingPreset
-        {
-            configName = "LightingData_Day",
-            lightColor = new Color(1.0f, 0.95f, 0.84f),
-            lightIntensity = 1.2f,
-            lightRotation = new Vector3(50f, -30f, 0f),
-            ambientLightColor = new Color(0.6f, 0.6f, 0.65f),
-            skyboxImageName = "Day",
-            areaLightColor = new Color(1.0f, 0.95f, 0.85f),
-            areaLightIntensity = 1.0f
-        },
-        new GameLightingPreset
-        {
-            configName = "LightingData_Night",
-            lightColor = new Color(0.2f, 0.3f, 0.5f),
-            lightIntensity = 0.2f,
-            lightRotation = new Vector3(20f, -150f, 0f),
-            ambientLightColor = new Color(0.05f, 0.08f, 0.15f),
-            skyboxImageName = "Night",
-            areaLightColor = new Color(0.1f, 0.15f, 0.3f),
-            areaLightIntensity = 0.2f
-        }
-    };
-
-    [Header("Skybox Configuration")]
-    public Material skyboxMaterial;
-    public string skyboxResourcesPath = "Skybox/";
 
     [Header("Data and Transition Configuration")]
     public string csvResourcePath = "SceneConfig";
@@ -127,8 +76,6 @@ public class GameManager : MonoBehaviour
     private List<CharacterController> disabledControllers = new List<CharacterController>();
     private List<MonoBehaviour> disabledCinemachineCameras = new List<MonoBehaviour>();
     private List<MonoBehaviour> disabledPlayerControlScripts = new List<MonoBehaviour>();
-
-    private Dictionary<Animator, bool> originalRootMotionStates = new Dictionary<Animator, bool>();
 
     private void OnEnable()
     {
@@ -229,11 +176,6 @@ public class GameManager : MonoBehaviour
 
     void Start()
     {
-        if (!string.IsNullOrEmpty(defaultLightingConfigName))
-        {
-            ParseAndSwapLightingData(defaultLightingConfigName);
-        }
-
         if (!inkJsonAsset) return;
         story = new Story(inkJsonAsset.text);
 
@@ -381,17 +323,6 @@ public class GameManager : MonoBehaviour
 
             disabledPlayerControlScripts.Clear();
 
-            originalRootMotionStates.Clear();
-            Animator[] animators = FindObjectsOfType<Animator>();
-            foreach (var anim in animators)
-            {
-                if (anim != null)
-                {
-                    originalRootMotionStates[anim] = anim.applyRootMotion;
-                    anim.applyRootMotion = true;
-                }
-            }
-
             MonoBehaviour[] allScripts = FindObjectsOfType<MonoBehaviour>();
             foreach (var script in allScripts)
             {
@@ -427,15 +358,6 @@ public class GameManager : MonoBehaviour
                 if (script != null) script.enabled = true;
             }
             disabledPlayerControlScripts.Clear();
-
-            foreach (var kvp in originalRootMotionStates)
-            {
-                if (kvp.Key != null)
-                {
-                    kvp.Key.applyRootMotion = kvp.Value;
-                }
-            }
-            originalRootMotionStates.Clear();
         }
 
         if (InspectManager.Instance != null)
@@ -750,14 +672,18 @@ public class GameManager : MonoBehaviour
                 case string s when s.Equals("InteractableObject.non-interactable", System.StringComparison.OrdinalIgnoreCase):
                     SetAllObjectsInteractable(false);
                     break;
-                case string s when s.StartsWith("Skybox.", System.StringComparison.OrdinalIgnoreCase):
-                    ParseAndSwapSkybox(cleanTag);
-                    break;
                 case string s when s.StartsWith("camera.", System.StringComparison.OrdinalIgnoreCase):
                     ParseAndSwitchCamera(cleanTag);
                     break;
                 case string s when s.StartsWith("LightingData_", System.StringComparison.OrdinalIgnoreCase) || s.StartsWith("LightingData.", System.StringComparison.OrdinalIgnoreCase):
-                    ParseAndSwapLightingData(cleanTag);
+                    if (SwitchBakedLight.Instance != null)
+                    {
+                        SwitchBakedLight.Instance.ApplyLightmapPreset(cleanTag);
+                    }
+                    else
+                    {
+                        Debug.LogWarning("[GameManager Warning] SwitchBakedLight instance not found.");
+                    }
                     break;
                 case string s when s.StartsWith("Emitter", System.StringComparison.OrdinalIgnoreCase):
                     ParseAndJumpToEmitter(cleanTag);
@@ -833,92 +759,6 @@ public class GameManager : MonoBehaviour
         {
             cinemachineCamera.enabled = true;
         }
-    }
-
-    void ParseAndSwapSkybox(string tag)
-    {
-        string imageName = tag.Replace("Skybox.", "").Trim();
-
-        Texture2D newTex = Resources.Load<Texture2D>(skyboxResourcesPath + imageName);
-        if (newTex == null)
-        {
-            newTex = Resources.Load<Texture2D>(imageName);
-        }
-
-        if (newTex != null)
-        {
-            Material targetMat = skyboxMaterial != null ? skyboxMaterial : RenderSettings.skybox;
-
-            if (targetMat != null)
-            {
-                if (targetMat.HasProperty("_MainTex"))
-                    targetMat.SetTexture("_MainTex", newTex);
-                else if (targetMat.HasProperty("_Tex"))
-                    targetMat.SetTexture("_Tex", newTex);
-
-                RenderSettings.skybox = targetMat;
-                DynamicGI.UpdateEnvironment();
-            }
-        }
-        else
-        {
-            Debug.LogWarning("[Skybox Warning] Image not found in: Resources/" + skyboxResourcesPath + imageName);
-        }
-    }
-
-    void ParseAndSwapLightingData(string tag)
-    {
-        string targetConfigName = tag.Trim();
-
-        if (targetConfigName.StartsWith("LightingData."))
-        {
-            targetConfigName = targetConfigName.Replace("LightingData.", "LightingData_");
-        }
-
-        GameLightingPreset? selectedPreset = null;
-        foreach (var preset in lightingPresets)
-        {
-            if (preset.configName.Equals(targetConfigName, System.StringComparison.OrdinalIgnoreCase))
-            {
-                selectedPreset = preset;
-                break;
-            }
-        }
-
-        if (selectedPreset.HasValue)
-        {
-            ApplyLightingConfig(selectedPreset.Value);
-        }
-        else
-        {
-            Debug.LogWarning("[LightingPreset Warning] Cannot find lighting config: '" + targetConfigName + "'");
-        }
-    }
-
-    private void ApplyLightingConfig(GameLightingPreset config)
-    {
-        if (mainDirectionalLight != null)
-        {
-            mainDirectionalLight.color = config.lightColor;
-            mainDirectionalLight.intensity = config.lightIntensity;
-            mainDirectionalLight.transform.eulerAngles = config.lightRotation;
-        }
-
-        if (mainAreaLight != null)
-        {
-            mainAreaLight.color = config.areaLightColor;
-            mainAreaLight.intensity = config.areaLightIntensity;
-        }
-
-        RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
-        RenderSettings.ambientLight = config.ambientLightColor;
-
-        if (!string.IsNullOrEmpty(config.skyboxImageName))
-        {
-            ParseAndSwapSkybox("Skybox." + config.skyboxImageName);
-        }
-
-        DynamicGI.UpdateEnvironment();
     }
 
     void ParseAndJumpToEmitter(string tag)

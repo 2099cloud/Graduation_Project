@@ -4,6 +4,18 @@ INCLUDE 9th scene.ink
 
 VAR scene = 1
 
+//-----Plot-----
+=== prologue ===
+.#Main Character.SetActive.false
+.#Old_Brother.SetActive.false
+.#LightingData_Night
+.#FreeLook Camera(3P).SetActive.false
+.#Animation.timeline.0
+.#phone.mode.Interactor
+
+->DONE
+
+//-----function-----
 === PickUpthePhone ===
 要是當初，我能更早發現就好了...
 +[接聽] 
@@ -12,14 +24,14 @@ VAR scene = 1
     .#fade.Out
     -> Title
 
-+ [掛斷] 
-    
++[掛斷]
     -> DONE
-
 
 ===Title===
 .#Animation.timeline.Title
 -> Scene1_start
+
+
 
 === Answer_the_call ===
 (文字)
@@ -43,6 +55,10 @@ VAR scene = 1
 ->Scene2_start
 
 
+
+
+
+
 === example ===
 突然間，桌上的手機螢幕亮了起來。
 # phone.prefab.incomingcall
@@ -50,16 +66,6 @@ VAR scene = 1
 # rotation(0, 180, 0)
 # TargetKnot="Answer_the_call"
 ->END
-
-=== prologue ===
-.#LightingData_Night
-.#FreeLook Camera(3P).SetActive.false
-.#Animation.timeline.1
-.#phone.mode.Interactor
-
-->DONE
-
-
 
 === intro_story ===
 # DirectorObject.timeline.Timeline_IntroScene
