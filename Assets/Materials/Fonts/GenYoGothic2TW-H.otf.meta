@@ -1,5 +1,5 @@
 fileFormatVersion: 2
-guid: e8829c620e1d51c43a6a86817df44269
+guid: 933c529b5b8ac114daa1284d49a19961
 TrueTypeFontImporter:
   externalObjects: {}
   serializedVersion: 4
@@ -9,7 +9,7 @@ TrueTypeFontImporter:
   characterPadding: 1
   includeFontData: 1
   fontNames:
-  - Yu Mincho
+  - GenYoGothic2 TW
   fallbackFontReferences: []
   customCharacters: 
   fontRenderingMode: 0

@@ -1,5 +1,5 @@
 fileFormatVersion: 2
-guid: c16ed32b5009a1d4981eb009868fad5a
+guid: 50e2f0b12bd53ec4eb8b1d082ebf41ea
 TrueTypeFontImporter:
   externalObjects: {}
   serializedVersion: 4
@@ -9,7 +9,7 @@ TrueTypeFontImporter:
   characterPadding: 1
   includeFontData: 1
   fontNames:
-  - Microsoft JhengHei
+  - GenYoGothic2 TW
   fallbackFontReferences: []
   customCharacters: 
   fontRenderingMode: 0

@@ -184,14 +184,29 @@ public class InspectManager : MonoBehaviour
         {
             if (isTimelinePlaying)
             {
-                Debug.LogWarning("[InspectManager Debug] World object click ignored because isTimelinePlaying is TRUE. Call SetTimelinePlaying(false) when timeline finishes.");
+                Debug.LogWarning("[InspectManager Debug] World object click ignored because isTimelinePlaying is TRUE.");
                 return;
             }
 
             if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject())
             {
-                Debug.Log("[InspectManager Debug] Mouse over UI, ignoring world object click.");
-                return;
+                PointerEventData pointerData = new PointerEventData(EventSystem.current)
+                {
+                    position = Input.mousePosition
+                };
+                List<RaycastResult> results = new List<RaycastResult>();
+                EventSystem.current.RaycastAll(pointerData, results);
+
+                foreach (var r in results)
+                {
+                    if (fadeGroup != null && (r.gameObject == fadeGroup.gameObject || r.gameObject.transform.IsChildOf(fadeGroup.transform)))
+                    {
+                        continue;
+                    }
+
+                    Debug.Log($"[InspectManager Debug] Click blocked by UI: [{r.gameObject.name}] (Layer: {LayerMask.LayerToName(r.gameObject.layer)})");
+                    return;
+                }
             }
 
             Camera mainCam = Camera.main;
@@ -214,7 +229,7 @@ public class InspectManager : MonoBehaviour
 
                 if (target != null && target.enabled)
                 {
-                    Debug.Log($"<color=green>[InspectManager Debug] InspectableObject found: {target.name}. Opening inspect mode.</color>");
+                    Debug.Log($"[InspectManager Debug] InspectableObject found: {target.name}. Opening inspect mode.");
                     StartInspect(target);
                 }
                 else if (target != null && !target.enabled)
@@ -254,7 +269,7 @@ public class InspectManager : MonoBehaviour
             return;
         }
 
-        Debug.Log($"<color=yellow>[InspectManager Debug] Starting inspect mode for target: {target.name}</color>");
+        Debug.Log($"[InspectManager Debug] Starting inspect mode for target: {target.name}");
 
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
@@ -276,7 +291,7 @@ public class InspectManager : MonoBehaviour
         if (fadeGroup != null)
         {
             fadeGroup.alpha = 0.65f;
-            fadeGroup.blocksRaycasts = true;
+            fadeGroup.blocksRaycasts = false;
         }
 
         if (inventoryHotbar != null && !isTimelinePlaying)
@@ -403,7 +418,7 @@ public class InspectManager : MonoBehaviour
     {
         if (target == null) return;
         currentTarget = target;
-        Debug.Log($"<color=cyan>[InspectManager Debug] Current target switched to: {target.mainInfoID}</color>");
+        Debug.Log($"[InspectManager Debug] Current target switched to: {target.mainInfoID}");
     }
 
     public void RegisterEvidenceSlot(InspectableObject target)
@@ -441,7 +456,7 @@ public class InspectManager : MonoBehaviour
             if (!target.isMainEvidenceUnlocked)
             {
                 target.isMainEvidenceUnlocked = true;
-                Debug.Log($"<color=green>[Evidence Unlocked] Object {target.mainInfoID} fully verified and unlocked!</color>");
+                Debug.Log($"[Evidence Unlocked] Object {target.mainInfoID} fully verified and unlocked!");
 
                 if (EvidenceManager.Instance != null)
                 {
@@ -471,7 +486,7 @@ public class InspectManager : MonoBehaviour
         if (!isInspecting) return;
         isInspecting = false;
 
-        Debug.Log("<color=yellow>[InspectManager Debug] Exiting 3D inspect mode.</color>");
+        Debug.Log("[InspectManager Debug] Exiting 3D inspect mode.");
 
         if (fadeGroup != null)
         {
@@ -567,8 +582,23 @@ public class InspectManager : MonoBehaviour
         {
             if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject())
             {
-                Debug.Log("[InspectManager Debug] Clicked on UI during inspect mode, ignoring sub-evidence raycast.");
-                return;
+                PointerEventData pointerData = new PointerEventData(EventSystem.current)
+                {
+                    position = Input.mousePosition
+                };
+                List<RaycastResult> results = new List<RaycastResult>();
+                EventSystem.current.RaycastAll(pointerData, results);
+
+                foreach (var r in results)
+                {
+                    if (fadeGroup != null && (r.gameObject == fadeGroup.gameObject || r.gameObject.transform.IsChildOf(fadeGroup.transform)))
+                    {
+                        continue;
+                    }
+
+                    Debug.Log($"[InspectManager Debug] Clicked on UI [{r.gameObject.name}] during inspect mode, ignoring sub-evidence raycast.");
+                    return;
+                }
             }
 
             Ray ray = inspectCamera.ScreenPointToRay(Input.mousePosition);
@@ -588,7 +618,7 @@ public class InspectManager : MonoBehaviour
                     {
                         if (!foundSubInfo.isFound)
                         {
-                            Debug.Log($"<color=cyan>[InspectManager Debug] Sub-evidence found: (Index: {index})!</color>");
+                            Debug.Log($"[InspectManager Debug] Sub-evidence found: (Index: {index})!");
                             clonedInfo.MarkAsFound(index);
                             currentTarget.MarkAsFound(index);
 

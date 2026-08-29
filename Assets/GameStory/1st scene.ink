@@ -1,4 +1,4 @@
-=== Scene1_start ===
+=== Story1_1 ===
 .#Skybox.Day
 .#LightingData_Day
 .#Main Character.SetActive.true
@@ -12,7 +12,7 @@
 .#Task.text.應門
 ->DONE
 
-=== Scene1_Answer_the_door ===
+=== Story1_2 ===
 .#Main Character.SetActive.true
 .#Animation.timeline.1-2
 快遞：您好，有您的包裹。
@@ -23,4 +23,9 @@
 弟弟：好，給你。
 快遞：好的，謝謝。
 
-->Scene1_Settings
+->Check_Package
+
+=== Check_Package ===
+.#Task.text.檢查包裹
+.#fade.In
+->DONE

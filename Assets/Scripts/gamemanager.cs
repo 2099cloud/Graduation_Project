@@ -128,6 +128,17 @@ public class GameManager : MonoBehaviour
 
     void Awake()
     {
+        if (EventSystem.current == null)
+        {
+            Debug.LogError("[GameManager Debug] No EventSystem found in scene! UI and EventTrigger will NOT work!");
+        }
+
+        Camera mainCam = Camera.main;
+        if (mainCam != null && mainCam.GetComponent<PhysicsRaycaster>() == null)
+        {
+            Debug.LogWarning("[GameManager Debug] MainCamera is missing PhysicsRaycaster component! EventTrigger on 3D objects will not fire!");
+        }
+
         RefreshSceneObjectsDictionary();
 
         if (taskText != null)
@@ -150,7 +161,6 @@ public class GameManager : MonoBehaviour
 
         if (cameraControlScripts == null || cameraControlScripts.Length == 0)
         {
-            Camera mainCam = Camera.main;
             if (mainCam != null)
             {
                 List<MonoBehaviour> foundScripts = new List<MonoBehaviour>();
@@ -231,14 +241,20 @@ public class GameManager : MonoBehaviour
 
             if (Input.GetMouseButtonDown(0))
             {
+                if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject())
+                {
+                    Debug.Log("[GameManager Debug] Click ignored because mouse is over UI element.");
+                    return;
+                }
+
                 if (DetectObjectClick()) return;
             }
 
-            if (story.canContinue)
+            if (story != null && story.canContinue)
             {
                 ContinueStory();
             }
-            else if (story.currentChoices.Count > 0 && !isTimelineCutsceneActive)
+            else if (story != null && story.currentChoices.Count > 0 && !isTimelineCutsceneActive)
             {
                 StartCoroutine(ToggleChoiceUI(true));
             }
@@ -368,14 +384,13 @@ public class GameManager : MonoBehaviour
 
     public void OnTimelinePauseSignalReached()
     {
-        string timelineName = (globalDirector != null && globalDirector.playableAsset != null) ? globalDirector.playableAsset.name : "Unknown";
-        Debug.Log("[Timeline Debug] Pause Signal Reached on Timeline: " + timelineName);
-
         if (globalDirector != null)
         {
             globalDirector.Pause();
         }
         isWaitingForTimelineClick = true;
+
+        SyncCharacterTransform();
 
         if (story != null && story.canContinue && dialogueText != null && string.IsNullOrWhiteSpace(dialogueText.text))
         {
@@ -388,7 +403,7 @@ public class GameManager : MonoBehaviour
         Debug.Log("[Timeline Debug] Advancing Timeline and Dialogue from pause state.");
         isWaitingForTimelineClick = false;
 
-        if (story.canContinue)
+        if (story != null && story.canContinue)
         {
             ContinueStory();
             if (globalDirector != null && globalDirector.state == PlayState.Paused)
@@ -396,7 +411,7 @@ public class GameManager : MonoBehaviour
                 globalDirector.Play();
             }
         }
-        else if (story.currentChoices.Count > 0)
+        else if (story != null && story.currentChoices.Count > 0)
         {
             StartCoroutine(ToggleChoiceUI(true));
             if (globalDirector != null && globalDirector.state == PlayState.Paused)
@@ -412,7 +427,7 @@ public class GameManager : MonoBehaviour
 
     private void CheckAndEndCutscene()
     {
-        if (!story.canContinue && story.currentChoices.Count == 0)
+        if (story != null && !story.canContinue && story.currentChoices.Count == 0)
         {
             Debug.Log("[Timeline Debug] Cutscene conditions ended. Cleaning up Timeline state.");
             if (isTimelineCutsceneActive)
@@ -434,6 +449,8 @@ public class GameManager : MonoBehaviour
 
     private void ContinueStory()
     {
+        if (story == null) return;
+
         string text = "";
         bool foundText = false;
 
@@ -1152,19 +1169,6 @@ public class GameManager : MonoBehaviour
 
             globalDirector.playableAsset = timelineAsset;
 
-            TimelineAsset timeline = timelineAsset as TimelineAsset;
-            if (timeline != null)
-            {
-                foreach (var track in timeline.GetOutputTracks())
-                {
-                    AnimationTrack animTrack = track as AnimationTrack;
-                    if (animTrack != null)
-                    {
-                        animTrack.trackOffset = TrackOffset.ApplyTransformOffsets;
-                    }
-                }
-            }
-
             globalDirector.Play();
         }
         else
@@ -1268,7 +1272,16 @@ public class GameManager : MonoBehaviour
     {
         if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject())
         {
-            Debug.Log("[GameManager Debug] Click ignored because mouse is over UI.");
+            PointerEventData pointerData = new PointerEventData(EventSystem.current)
+            {
+                position = Input.mousePosition
+            };
+            List<RaycastResult> results = new List<RaycastResult>();
+            EventSystem.current.RaycastAll(pointerData, results);
+            foreach (var result in results)
+            {
+                Debug.Log($"[GameManager Debug] Click blocked by UI Element: {result.gameObject.name} (Layer: {LayerMask.LayerToName(result.gameObject.layer)})");
+            }
             return false;
         }
 
@@ -1318,5 +1331,21 @@ public class GameManager : MonoBehaviour
         return false;
     }
 
+    private void SyncCharacterTransform()
+    {
+        GameObject player = GameObject.FindWithTag("Player");
+        if (player == null) return;
+
+        Animator anim = player.GetComponent<Animator>();
+        if (anim != null)
+        {
+            Vector3 currentWorldPos = anim.rootPosition;
+            if (currentWorldPos != Vector3.zero)
+            {
+                player.transform.position = currentWorldPos;
+                Physics.SyncTransforms();
+            }
+        }
+    }
     void ClearChoices() { if (choiceHolder) foreach (Transform child in choiceHolder) Destroy(child.gameObject); }
 }

@@ -67,15 +67,15 @@ MonoBehaviour:
       m_Calls: []
   m_text: "\u9078\u9805\u5167\u5BB9"
   m_isRightToLeft: 0
-  m_fontAsset: {fileID: 11400000, guid: 21b042e5f4a7a7549b9248b60847fc69, type: 2}
-  m_sharedMaterial: {fileID: -9118746395824632568, guid: 21b042e5f4a7a7549b9248b60847fc69, type: 2}
+  m_fontAsset: {fileID: 11400000, guid: 6eb10a9bc6636524690ccbe2447f22fd, type: 2}
+  m_sharedMaterial: {fileID: -311445269009235110, guid: 6eb10a9bc6636524690ccbe2447f22fd, type: 2}
   m_fontSharedMaterials: []
   m_fontMaterial: {fileID: 0}
   m_fontMaterials: []
   m_fontColor32:
     serializedVersion: 2
-    rgba: 4281479730
-  m_fontColor: {r: 0.19607843, g: 0.19607843, b: 0.19607843, a: 1}
+    rgba: 4294967295
+  m_fontColor: {r: 1, g: 1, b: 1, a: 1}
   m_enableVertexGradient: 0
   m_colorMode: 3
   m_fontColorGradient:

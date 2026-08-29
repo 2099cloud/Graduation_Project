@@ -1,4 +1,4 @@
-﻿ using UnityEngine;
+﻿using UnityEngine;
 #if ENABLE_INPUT_SYSTEM 
 using UnityEngine.InputSystem;
 #endif
@@ -75,6 +75,9 @@ namespace StarterAssets
         [Tooltip("For locking the camera position on all axis")]
         public bool LockCameraPosition = false;
 
+        [Header("Custom Animator Setup")]
+        [SerializeField] private Animator targetAnimator;
+
         // cinemachine
         private float _cinemachineTargetYaw;
         private float _cinemachineTargetPitch;
@@ -135,14 +138,21 @@ namespace StarterAssets
         private void Start()
         {
             _cinemachineTargetYaw = CinemachineCameraTarget.transform.rotation.eulerAngles.y;
-            // 原始代碼：
-            _hasAnimator = TryGetComponent(out _animator);
-            // 更改後代碼：
-            /*_animator = GetComponentInChildren<Animator>();
-            _hasAnimator = _animator != null;*/
+
+            if (targetAnimator != null)
+            {
+                _animator = targetAnimator;
+            }
+            else
+            {
+                _animator = GetComponentInChildren<Animator>();
+            }
+
+            _hasAnimator = _animator != null;
 
             _controller = GetComponent<CharacterController>();
             _input = GetComponent<StarterAssetsInputs>();
+
 #if ENABLE_INPUT_SYSTEM 
             _playerInput = GetComponent<PlayerInput>();
 #else
@@ -158,20 +168,15 @@ namespace StarterAssets
 
         private void Update()
         {
-            // 原始代碼：
-            _hasAnimator = TryGetComponent(out _animator);
-
-            // 更改後代碼：
-            /*_animator = GetComponentInChildren<Animator>();
-            _hasAnimator = _animator != null;*/
-
             // 更改後代碼：音效能夠順利停止
+
             if (_animationBlend < 0.05f)
             {
                 AudioSource audio = GetComponent<AudioSource>();
                 if (audio != null && audio.isPlaying) audio.Stop();
             }
             // =========================================================
+
             JumpAndGravity();
             GroundedCheck();
             Move();
@@ -293,6 +298,10 @@ namespace StarterAssets
                 _animator.SetFloat(_animIDSpeed, _animationBlend);
                 _animator.SetFloat(_animIDMotionSpeed, inputMagnitude);
             }
+            else
+            {
+                Debug.LogWarning("Animator reference is missing or _hasAnimator is false!");
+            }
         }
 
         private void JumpAndGravity()
@@ -392,17 +401,12 @@ namespace StarterAssets
                 if (FootstepAudioClips.Length > 0)
                 {
                     var index = Random.Range(0, FootstepAudioClips.Length);
-                    
-                    // ====== 修改後程式碼:音效可順利停止
+
                     AudioSource audio = GetComponent<AudioSource>();
                     if (audio != null)
                     {
                         audio.PlayOneShot(FootstepAudioClips[index], FootstepAudioVolume);
                     }
-                    // ====================================================================
-                    
-                    //原始程式碼
-                    //AudioSource.PlayClipAtPoint(FootstepAudioClips[index], transform.TransformPoint(_controller.center), FootstepAudioVolume);
                 }
             }
         }
