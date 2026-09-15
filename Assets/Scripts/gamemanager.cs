@@ -241,9 +241,9 @@ public class GameManager : MonoBehaviour
 
             if (Input.GetMouseButtonDown(0))
             {
-                if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject())
+                if (IsPointerOverUIElement())
                 {
-                    Debug.Log("[GameManager Debug] Click ignored because mouse is over UI element.");
+                    Debug.Log("[GameManager Debug] Click ignored because mouse is over Canvas UI element.");
                     return;
                 }
 
@@ -259,6 +259,31 @@ public class GameManager : MonoBehaviour
                 StartCoroutine(ToggleChoiceUI(true));
             }
         }
+    }
+
+    private bool IsPointerOverUIElement()
+    {
+        if (EventSystem.current == null) return false;
+
+        PointerEventData pointerData = new PointerEventData(EventSystem.current)
+        {
+            position = Input.mousePosition
+        };
+        List<RaycastResult> results = new List<RaycastResult>();
+        EventSystem.current.RaycastAll(pointerData, results);
+
+        foreach (var result in results)
+        {
+            if (result.module is GraphicRaycaster)
+            {
+                if (fadeGroup != null && (result.gameObject == fadeGroup.gameObject || result.gameObject.transform.IsChildOf(fadeGroup.transform)))
+                {
+                    continue;
+                }
+                return true;
+            }
+        }
+        return false;
     }
 
     private void SetCameraControlsActive(bool isActive)
@@ -1270,18 +1295,8 @@ public class GameManager : MonoBehaviour
 
     bool DetectObjectClick()
     {
-        if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject())
+        if (IsPointerOverUIElement())
         {
-            PointerEventData pointerData = new PointerEventData(EventSystem.current)
-            {
-                position = Input.mousePosition
-            };
-            List<RaycastResult> results = new List<RaycastResult>();
-            EventSystem.current.RaycastAll(pointerData, results);
-            foreach (var result in results)
-            {
-                Debug.Log($"[GameManager Debug] Click blocked by UI Element: {result.gameObject.name} (Layer: {LayerMask.LayerToName(result.gameObject.layer)})");
-            }
             return false;
         }
 

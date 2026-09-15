@@ -1,4 +1,4 @@
-===9th_Dialog1 ===
+===Story9 ===
 .#LightingData_Day
 .#FreeLook Camera(3P).SetActive.false
 .#1P camera.SetActive.false

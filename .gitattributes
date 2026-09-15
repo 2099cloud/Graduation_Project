@@ -14,3 +14,5 @@
 /Assets/Prefabs/young[[:space:]]brother/Young_Brother.glb filter=lfs diff=lfs merge=lfs -text
 /Assets/Furniture[[:space:]]Models/Lamp/LampTextures/Lamp_Specular.psd filter=lfs diff=lfs merge=lfs -text
 /Assets/Furniture[[:space:]]Models/Table/TableTextures/Table_Specular.psd filter=lfs diff=lfs merge=lfs -text
+/Assets/Prefabs/Furniture[[:space:]]Models/Lamp/LampTextures/Lamp_Specular.psd filter=lfs diff=lfs merge=lfs -text
+/Assets/Prefabs/Furniture[[:space:]]Models/Table/TableTextures/Table_Specular.psd filter=lfs diff=lfs merge=lfs -text
