@@ -6,31 +6,37 @@ VAR scene = 1
 
 //-----Plot-----
 === prologue ===
-.#Main Character.SetActive.false
+//.#Main Character.SetActive.false
 .#Old_Brother.SetActive.false
 .#LightingData_Night
-.#FreeLook Camera(3P).SetActive.false
+
 .#Animation.timeline.0
 .#phone.mode.Interactor
 
 ->DONE
 
-===Title===
-.#Animation.timeline.Title
--> Story1_1
+===evidence===
+#FreeLook Camera(3P).SetActive.false
+.#Animation.timeline.0-1
+->DONE
 
+===Repeat===
+
+=Sentence1
+我想再看看那些東西。
+=Sentence2
+當時，是不是還有甚麼我能做的?
 
 
 
 //-----function-----
 
 === PickUpthePhone ===
-要是當初，我能更早發現就好了...
 +[接聽] 
     //# PhoneAction: PickUp
     //# ChangePhoneImage: Incoming_Call
-    .#fade.Out
-    -> Title
+    .#Animation.timeline.0-2
+    -> Story1_1
 
 +[掛斷]
     -> DONE

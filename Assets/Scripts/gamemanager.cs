@@ -23,10 +23,6 @@ public class GameManager : MonoBehaviour
     public GameObject choiceButtonPrefab;
     public Transform choiceHolder;
 
-    [Header("Task System Configuration")]
-    public TextMeshProUGUI taskText;
-    public string taskCsvPath = "TaskManager";
-
     [Header("Timeline Configuration")]
     public PlayableDirector globalDirector;
 
@@ -54,20 +50,8 @@ public class GameManager : MonoBehaviour
     private int currentSceneID = 0;
 
     private string currentTargetObjectName = "";
-    private string currentTaskTitle = "";
-    private string currentTaskFullContent = "";
-    private bool isTaskPopupOpen = false;
     private bool isTransitioning = false;
     private List<string> deferredTags = new List<string>();
-
-    private Vector3 originalPosition;
-    private Vector2 originalPivot;
-    private Vector2 originalAnchorMin;
-    private Vector2 originalAnchorMax;
-    private Vector2 originalAnchoredPosition;
-    private float originalFontSize;
-    private Color originalColor;
-    private Transform originalParent;
 
     private bool isWaitingForTimelineClick = false;
     private bool isTimelineCutsceneActive = false;
@@ -141,24 +125,6 @@ public class GameManager : MonoBehaviour
 
         RefreshSceneObjectsDictionary();
 
-        if (taskText != null)
-        {
-            var rect = taskText.rectTransform;
-            originalPosition = rect.localPosition;
-            originalPivot = rect.pivot;
-            originalAnchorMin = rect.anchorMin;
-            originalAnchorMax = rect.anchorMax;
-            originalAnchoredPosition = rect.anchoredPosition;
-            originalFontSize = taskText.fontSize;
-            originalColor = taskText.color;
-            originalParent = taskText.transform.parent;
-
-            Button btn = taskText.gameObject.GetComponent<Button>();
-            if (btn == null) btn = taskText.gameObject.AddComponent<Button>();
-            btn.onClick.RemoveAllListeners();
-            btn.onClick.AddListener(OnTaskTextClicked);
-        }
-
         if (cameraControlScripts == null || cameraControlScripts.Length == 0)
         {
             if (mainCam != null)
@@ -217,12 +183,8 @@ public class GameManager : MonoBehaviour
 
         SetCameraControlsActive(!shouldDisableCamera);
 
-        if (isTaskPopupOpen)
+        if (TaskSystemManager.Instance != null && TaskSystemManager.Instance.IsTaskPopupOpen)
         {
-            if (Input.GetMouseButtonDown(0))
-            {
-                OnCloseTaskPopupClicked();
-            }
             return;
         }
 
@@ -337,16 +299,9 @@ public class GameManager : MonoBehaviour
 
     private void SetTimelineSystemOverride(bool overrideActive)
     {
-        if (taskText != null)
+        if (TaskSystemManager.Instance != null)
         {
-            if (overrideActive)
-            {
-                taskText.gameObject.SetActive(false);
-            }
-            else if (!string.IsNullOrEmpty(currentTaskTitle))
-            {
-                taskText.gameObject.SetActive(true);
-            }
+            TaskSystemManager.Instance.SetTaskVisibility(!overrideActive);
         }
 
         if (overrideActive)
@@ -625,7 +580,10 @@ public class GameManager : MonoBehaviour
                 if (id.StartsWith("Task."))
                 {
                     string taskID = id.Replace("Task.", "").Trim();
-                    ParseAndSetTask($"Task.text.{taskID}");
+                    if (TaskSystemManager.Instance != null)
+                    {
+                        TaskSystemManager.Instance.ParseAndSetTask("Task.text." + taskID);
+                    }
                     continue;
                 }
 
@@ -731,7 +689,10 @@ public class GameManager : MonoBehaviour
                     ParseAndJumpToEmitter(cleanTag);
                     break;
                 case string s when s.StartsWith("Task.text.", System.StringComparison.OrdinalIgnoreCase):
-                    ParseAndSetTask(cleanTag);
+                    if (TaskSystemManager.Instance != null)
+                    {
+                        TaskSystemManager.Instance.ParseAndSetTask(cleanTag);
+                    }
                     break;
                 case string s when s.Contains(".mode."):
                     ParseAndSetObjectMode(cleanTag);
@@ -911,104 +872,12 @@ public class GameManager : MonoBehaviour
         }
     }
 
-    public void OnTaskTextClicked()
-    {
-        if (string.IsNullOrEmpty(currentTaskTitle) || isTaskPopupOpen) return;
-        if (fadeGroup != null && fadeGroup.alpha > 0.9f) return;
-
-        isTaskPopupOpen = true;
-
-        if (fadeGroup != null)
-        {
-            fadeGroup.alpha = 0.65f;
-            fadeGroup.blocksRaycasts = true;
-        }
-
-        if (taskText != null)
-        {
-            taskText.transform.SetAsLastSibling();
-            var rect = taskText.rectTransform;
-            rect.anchorMin = new Vector2(0.5f, 0.5f);
-            rect.anchorMax = new Vector2(0.5f, 0.5f);
-            rect.pivot = new Vector2(0.5f, 0.5f);
-            rect.anchoredPosition = Vector2.zero;
-            taskText.fontSize = originalFontSize * 1.5f;
-            taskText.color = Color.white;
-            taskText.alignment = TextAlignmentOptions.Center;
-            taskText.text = "<color=#000000><b>" + currentTaskTitle + "</b></color>\n\n<color=#FFFFFF><size=80%>" + currentTaskFullContent + "</size></color>";
-        }
-    }
-
-    public void OnCloseTaskPopupClicked()
-    {
-        if (!isTaskPopupOpen) return;
-
-        if (fadeGroup != null)
-        {
-            fadeGroup.alpha = 0f;
-            fadeGroup.blocksRaycasts = false;
-        }
-
-        if (taskText != null)
-        {
-            var rect = taskText.rectTransform;
-            rect.anchorMin = originalAnchorMin;
-            rect.anchorMax = originalAnchorMax;
-            rect.pivot = originalPivot;
-            rect.anchoredPosition = originalAnchoredPosition;
-            rect.localPosition = originalPosition;
-            taskText.fontSize = originalFontSize;
-            taskText.color = originalColor;
-            taskText.alignment = TextAlignmentOptions.Left;
-            taskText.text = "Task: " + currentTaskTitle;
-        }
-        StartCoroutine(ResetPopupFlag());
-    }
-
-    private IEnumerator ResetPopupFlag()
-    {
-        yield return null;
-        isTaskPopupOpen = false;
-    }
-
     void SetAllObjectsInteractable(bool state)
     {
         InteractableObject[] allObjects = FindObjectsOfType<InteractableObject>(true);
         foreach (var obj in allObjects)
         {
             obj.isInteractable = state;
-        }
-    }
-
-    void ParseAndSetTask(string tag)
-    {
-        string taskID = tag.Replace("Task.text.", "").Trim();
-        TextAsset taskCsv = Resources.Load<TextAsset>(taskCsvPath);
-        if (taskCsv == null) return;
-
-        string csvText = taskCsv.text.Replace("\r", "");
-        string[] lines = csvText.Split('\n');
-
-        for (int i = 1; i < lines.Length; i++)
-        {
-            if (string.IsNullOrWhiteSpace(lines[i])) continue;
-            string[] data = lines[i].Split(',');
-
-            if (data[0].Trim() == taskID)
-            {
-                currentTaskTitle = taskID;
-                currentTaskFullContent = data[1].Trim();
-
-                if (taskText != null)
-                {
-                    taskText.gameObject.SetActive(true);
-                    if (!isTaskPopupOpen)
-                    {
-                        taskText.text = "Task: " + currentTaskTitle;
-                    }
-                }
-                break;
-            }
         }
     }
 
@@ -1362,5 +1231,6 @@ public class GameManager : MonoBehaviour
             }
         }
     }
+
     void ClearChoices() { if (choiceHolder) foreach (Transform child in choiceHolder) Destroy(child.gameObject); }
 }
