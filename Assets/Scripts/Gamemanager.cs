@@ -627,6 +627,7 @@ public class GameManager : MonoBehaviour
         foreach (string tag in tags)
         {
             string cleanTag = tag.Trim();
+            if (cleanTag.StartsWith("#")) cleanTag = cleanTag.Substring(1).Trim();
             if (cleanTag.Contains(".SetActive."))
             {
                 ParseAndSetObjectActive(cleanTag);
@@ -636,6 +637,7 @@ public class GameManager : MonoBehaviour
         foreach (string tag in tags)
         {
             string cleanTag = tag.Trim();
+            if (cleanTag.StartsWith("#")) cleanTag = cleanTag.Substring(1).Trim();
             if (cleanTag.Contains(".prefab."))
             {
                 ParseAndSwapPrefab(cleanTag);
@@ -645,6 +647,7 @@ public class GameManager : MonoBehaviour
         foreach (string tag in tags)
         {
             string cleanTag = tag.Trim();
+            if (cleanTag.StartsWith("#")) cleanTag = cleanTag.Substring(1).Trim();
 
             if (cleanTag.Equals("fade.Out", System.StringComparison.OrdinalIgnoreCase))
             {
@@ -678,7 +681,37 @@ public class GameManager : MonoBehaviour
                 case string s when s.StartsWith("LightingData_", System.StringComparison.OrdinalIgnoreCase) || s.StartsWith("LightingData.", System.StringComparison.OrdinalIgnoreCase):
                     if (SwitchBakedLight.Instance != null)
                     {
-                        SwitchBakedLight.Instance.ApplyLightmapPreset(cleanTag);
+                        string presetName = "";
+                        if (cleanTag.StartsWith("LightingData_", System.StringComparison.OrdinalIgnoreCase))
+                        {
+                            presetName = cleanTag.Substring("LightingData_".Length).Trim();
+                        }
+                        else if (cleanTag.StartsWith("LightingData.", System.StringComparison.OrdinalIgnoreCase))
+                        {
+                            presetName = cleanTag.Substring("LightingData.".Length).Trim();
+                        }
+
+                        bool foundDirectMatch = false;
+                        if (!string.IsNullOrEmpty(presetName) && SwitchBakedLight.Instance.presets != null)
+                        {
+                            foreach (var p in SwitchBakedLight.Instance.presets)
+                            {
+                                if (p.configName.Equals(presetName, System.StringComparison.OrdinalIgnoreCase))
+                                {
+                                    foundDirectMatch = true;
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (foundDirectMatch)
+                        {
+                            SwitchBakedLight.Instance.ApplyLightmapPreset(presetName);
+                        }
+                        else
+                        {
+                            SwitchBakedLight.Instance.ApplyLightmapPreset(cleanTag);
+                        }
                     }
                     else
                     {
@@ -1005,6 +1038,15 @@ public class GameManager : MonoBehaviour
                 }
             }
         }
+        var targetDoor = targetGo.GetComponent<InteractiveDoor>();
+        if (targetDoor != null)
+        {
+            string[] parts = commandContent.Split('=');
+            if (parts.Length >= 2)
+            {
+                targetDoor.targetKnot = parts[1].Replace("\"", "").Trim();
+            }
+        }
     }
 
     void ParseAndSwapMaterial(string tag)
@@ -1233,4 +1275,13 @@ public class GameManager : MonoBehaviour
     }
 
     void ClearChoices() { if (choiceHolder) foreach (Transform child in choiceHolder) Destroy(child.gameObject); }
+
+    public void ExecuteKnot(string knotName)
+    {
+        if (story != null && !string.IsNullOrEmpty(knotName))
+        {
+            story.ChoosePathString(knotName);
+            ContinueStory();
+        }
+    }
 }

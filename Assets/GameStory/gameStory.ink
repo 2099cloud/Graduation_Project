@@ -24,8 +24,10 @@ VAR scene = 1
 
 =Sentence1
 我想再看看那些東西。
+->DONE
 =Sentence2
 當時，是不是還有甚麼我能做的?
+->DONE
 
 
 
@@ -40,9 +42,31 @@ VAR scene = 1
 
 +[掛斷]
     -> DONE
+    
+===door===
+我跟他共用電腦的書房…。
+或許我早就該多上網了解一下那種傢伙的做案手法的。
+END
+->DONE
 
+===door001=== 
+這是他的房間。
+我當時應該阻止他的。
+END
+->DONE
+
+===door002=== 
+我不想躲回房間...什麼都不做只會讓一切更糟糕。
+END
+->DONE
+
+===Front_door=== 
+現在不是出門的時候。
+END
+->DONE
 ===test===
-.#Animation.timeline.5
+.#Task.text.紙箱
+.#door.TargetKnot=""
 -> DONE
 
 
@@ -58,7 +82,7 @@ VAR scene = 1
 #fade
 # Main Character.position(-7.83, 0.345, 5.95)
 # Main Character.rotation(0, 0, 0)
-
+#Task.text.應門
 # DirectorObject.timeline.Timeline_IntroScene
 這是一段開場對白，當進入這個節點時，會自動去 Resources 載入並播放特定的 Timeline。
 NPC點點頭說道：「你終於來了。」

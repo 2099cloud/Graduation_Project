@@ -175,7 +175,7 @@ public class TaskSystemManager : MonoBehaviour
             string titleHex = ColorUtility.ToHtmlStringRGB(popupTitleColor);
             string contentHex = ColorUtility.ToHtmlStringRGB(popupContentColor);
 
-            taskText.text = "<color=#" + titleHex + "><size=" + popupTitleFontSize + "><b>" + currentTaskTitle + "</b></size></color>\n\n<color=#" + contentHex + "><size=" + popupContentFontSize + ">" + currentTaskFullContent + "</size></color>";
+            taskText.text = "<color=#" + titleHex + "><size=" + popupTitleFontSize + ">" + currentTaskTitle + "</b></size></color>\n\n<color=#" + contentHex + "><size=" + popupContentFontSize + ">" + currentTaskFullContent + "</size></color>";
         }
     }
 

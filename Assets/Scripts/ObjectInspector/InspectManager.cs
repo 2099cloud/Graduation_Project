@@ -484,7 +484,24 @@ public class InspectManager : MonoBehaviour
         if (!isInspecting) return;
         isInspecting = false;
 
-        Debug.Log("<color=yellow>[InspectManager Debug] Exiting 3D inspect mode.</color>");
+        Debug.Log("[InspectManager Debug] Exiting 3D inspect mode.");
+
+        if (currentTarget != null)
+        {
+            GameManager gm = FindObjectOfType<GameManager>();
+            if (gm != null)
+            {
+                if (currentTarget.IsAllSubObjectsFound() && !string.IsNullOrEmpty(currentTarget.allFoundInkKnot))
+                {
+                    gm.ExecuteKnot(currentTarget.allFoundInkKnot);
+                }
+
+                if (currentTarget.IsAllSubObjectsVerified() && !string.IsNullOrEmpty(currentTarget.allVerifiedInkKnot))
+                {
+                    gm.ExecuteKnot(currentTarget.allVerifiedInkKnot);
+                }
+            }
+        }
 
         if (fadeGroup != null)
         {

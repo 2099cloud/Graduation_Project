@@ -10,6 +10,8 @@
 
 ===Scene1_Settings===
 .#Task.text.應門
+.#door002.TargetKnot=""
+.#Front_door.TargetKnot="Story1_2"
 ->DONE
 
 === Story1_2 ===
