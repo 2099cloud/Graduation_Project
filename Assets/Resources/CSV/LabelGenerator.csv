@@ -1,6 +1,9 @@
-物件名稱,hierarchy,
-,phone,手機
-,,大門
-,,
-,passbook,存摺
-,Deed,地契
+物件名稱,hierarchy(main),hierarchy(sub)
+手機,phone,phone
+大門,,
+筆電,Laptop,laptop
+存摺,passbook,passbook
+地契,Deed,Deed
+塗鴉,Photo,photo
+牆上的便利貼,Cork Board,cordboard
+包裹,package,Package

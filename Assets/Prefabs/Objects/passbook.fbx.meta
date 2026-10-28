@@ -3,7 +3,22 @@ guid: 5d77c638ac2d9fe48a93398123a2b240
 ModelImporter:
   serializedVersion: 22200
   internalIDToNameTable: []
-  externalObjects: {}
+  externalObjects:
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Material
+    second: {fileID: 2100000, guid: 19cffd935dafde84890ce6b336555a0a, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: "\u6750\u8CEA"
+    second: {fileID: 2100000, guid: b501e41b40c376e4f8f932f6b63da014, type: 2}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: bankbook
+    second: {fileID: 2800000, guid: 223fc8333b08b9942a5295ee6d0fa0ac, type: 3}
   materials:
     materialImportMode: 2
     materialName: 0

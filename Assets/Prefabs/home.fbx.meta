@@ -15,10 +15,65 @@ ModelImporter:
       name: "\u6750\u8CEA.001"
     second: {fileID: 2100000, guid: 8acff1430f5bab742b622061caf79b91, type: 2}
   - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: "\u6750\u8CEA.002"
+    second: {fileID: 2100000, guid: bf24e744835abf74dbe0079a70d8f949, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: "\u6750\u8CEA.003"
+    second: {fileID: 2100000, guid: 036368d1e4420ad4993b70b8706f6542, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: "\u6750\u8CEA.004"
+    second: {fileID: 2100000, guid: 7ffa1ec8d2ca8d24084f483af105ad86, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: "\u6750\u8CEA.005"
+    second: {fileID: 2100000, guid: 2ab7700f0232994429fcc461f5a866b4, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: "\u6750\u8CEA.006"
+    second: {fileID: 2100000, guid: 65fadc587d97dcc4b83f62d847591ce1, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: "\u6750\u8CEA.007"
+    second: {fileID: 2100000, guid: 509c0dbf419561546909408291717137, type: 2}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: "ChatGPT Image 2026\u5E749\u670812\u65E5 00_48_23"
+    second: {fileID: 2800000, guid: 7636071545c5eb941a6ff4b7d3e790a1, type: 3}
+  - first:
       type: UnityEngine:Texture2D
       assembly: UnityEngine.CoreModule
       name: "ChatGPT Image 2026\u5E749\u670815\u65E5 00_52_05"
-    second: {fileID: 2800000, guid: ddb3b70c7fe71ef429ed97ba9dec20b0, type: 3}
+    second: {fileID: 2800000, guid: 5d62fe3a342ae854e8698f92e908e554, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Gemini_Generated_Image_42t04v42t04v42t0
+    second: {fileID: 2800000, guid: cc376e9c2a332b24d88e1d12526189cb, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: browser
+    second: {fileID: 2800000, guid: 2da196f598bab0d4eb47a48768175cc3, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: "\u6728\u9580\u6B63\u53CD\u9762\u6728\u7D0B\u7D0B\u7406\u5716\u677F"
+    second: {fileID: 2800000, guid: 2e0f412dc89e9264c9fd622ee722db95, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: "\u96D9\u9762\u7384\u95DC\u9580\u6750\u8CEA\u5716\u96C6-2"
+    second: {fileID: 2800000, guid: 1d0578bb386391449b8e557e0df3c302, type: 3}
   materials:
     materialImportMode: 2
     materialName: 0

@@ -45,37 +45,17 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   inkJsonAsset: {fileID: 0}
+  startingKnot: 
   dialogueText: {fileID: 0}
   choiceButtonPrefab: {fileID: 0}
   choiceHolder: {fileID: 0}
-  taskText: {fileID: 0}
-  taskCsvPath: TaskManager
+  scoreDisplayTMP: {fileID: 0}
+  searchWeight: 0.2
+  verifyWeight: 0.5
+  dialogueWeight: 0.3
   globalDirector: {fileID: 0}
-  firstPersonCamera: {fileID: 0}
-  thirdPersonCamera: {fileID: 0}
-  timelineCamera: {fileID: 0}
-  mainDirectionalLight: {fileID: 0}
-  mainAreaLight: {fileID: 0}
-  defaultLightingConfigName: LightingData_Night
-  lightingPresets:
-  - configName: LightingData_Day
-    lightColor: {r: 1, g: 0.95, b: 0.84, a: 1}
-    lightIntensity: 1.2
-    lightRotation: {x: 50, y: -30, z: 0}
-    ambientLightColor: {r: 0.6, g: 0.6, b: 0.65, a: 1}
-    skyboxImageName: Day
-    areaLightColor: {r: 1, g: 0.95, b: 0.85, a: 1}
-    areaLightIntensity: 1
-  - configName: LightingData_Night
-    lightColor: {r: 0.2, g: 0.3, b: 0.5, a: 1}
-    lightIntensity: 0.2
-    lightRotation: {x: 20, y: -150, z: 0}
-    ambientLightColor: {r: 0.05, g: 0.08, b: 0.15, a: 1}
-    skyboxImageName: Night
-    areaLightColor: {r: 0.1, g: 0.15, b: 0.3, a: 1}
-    areaLightIntensity: 0.2
-  skyboxMaterial: {fileID: 0}
-  skyboxResourcesPath: Skyboxes/
+  cinemachineCamera: {fileID: 0}
+  playerInputScript: {fileID: 0}
   csvResourcePath: SceneConfig
   fadeGroup: {fileID: 0}
   fadeDuration: 0.5

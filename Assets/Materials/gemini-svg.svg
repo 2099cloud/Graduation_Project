@@ -1,0 +1,209 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" width="1920" height="1080">
+  <defs>
+    <!-- 背景漸層 -->
+    <linearGradient id="bg-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0F172A"/>
+      <stop offset="50%" stop-color="#1E293B"/>
+      <stop offset="100%" stop-color="#0F172A"/>
+    </linearGradient>
+
+    <!-- Hero 區漸層 -->
+    <linearGradient id="hero-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#1E3A8A"/>
+      <stop offset="50%" stop-color="#2563EB"/>
+      <stop offset="100%" stop-color="#1D4ED8"/>
+    </linearGradient>
+
+    <!-- 卡片面板漸層 -->
+    <linearGradient id="card-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#1E293B" stop-opacity="0.95"/>
+      <stop offset="100%" stop-color="#0F172A" stop-opacity="0.95"/>
+    </linearGradient>
+
+    <!-- 中央 1/12 預留白板漸層 -->
+    <linearGradient id="center-panel-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.98"/>
+      <stop offset="100%" stop-color="#F8FAFC" stop-opacity="0.98"/>
+    </linearGradient>
+
+    <!-- 陰影濾鏡 -->
+    <filter id="drop-shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#000000" flood-opacity="0.4"/>
+    </filter>
+  </defs>
+
+  <!-- 1. 全頁背景 -->
+  <rect width="1920" height="1080" fill="url(#bg-grad)"/>
+
+  <!-- 背景科技網格 -->
+  <g opacity="0.04" stroke="#FFFFFF" stroke-width="1">
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <rect width="40" height="40" fill="none"/>
+      <path d="M 40 0 L 0 0 0 40"/>
+    </pattern>
+    <rect width="1920" height="1080" fill="url(#grid)"/>
+  </g>
+
+  <!-- 2. 頁首 Header (80px) -->
+  <rect x="0" y="0" width="1920" height="80" fill="#090D16" opacity="0.95"/>
+  <line x1="0" y1="80" x2="1920" y2="80" stroke="#334155" stroke-width="2"/>
+
+  <!-- Logo 與標題 (全文字格式) -->
+  <g transform="translate(80, 20)">
+    <path d="M12 0 L32 8 V20 C32 32 12 40 12 40 C12 40 -8 32 -8 20 V8 Z" fill="#2563EB" stroke="#60A5FA" stroke-width="2"/>
+    <text x="45" y="28" font-family="'PingFang TC', 'Microsoft JhengHei', sans-serif" font-weight="bold" font-size="24" fill="#FFFFFF" letter-spacing="1">165 全民防詐資訊網</text>
+  </g>
+
+  <!-- 導覽列標籤 (全文字格式) -->
+  <g transform="translate(1080, 30)" font-family="'PingFang TC', 'Microsoft JhengHei', sans-serif" font-size="16" fill="#94A3B8">
+    <text x="0" y="15" fill="#38BDF8" font-weight="bold">首頁</text>
+    <text x="100" y="15">最新詐騙預警</text>
+    <text x="240" y="15">互動學習區</text>
+    <text x="360" y="15">報案與檢舉</text>
+  </g>
+
+  <!-- 緊急舉報按鈕 (全文字格式) -->
+  <g transform="translate(1650, 18)">
+    <rect width="180" height="44" rx="22" fill="#DC2626"/>
+    <text x="90" y="27" font-family="'PingFang TC', 'Microsoft JhengHei', sans-serif" font-weight="bold" font-size="16" fill="#FFFFFF" text-anchor="middle">165 反詐騙專線</text>
+  </g>
+
+  <!-- 3. Hero 橫幅 Banner (130px) -->
+  <g transform="translate(0, 80)">
+    <rect width="1920" height="130" fill="url(#hero-grad)"/>
+    <path d="M0 130 L300 0 L500 130 Z" fill="#FFFFFF" opacity="0.04"/>
+    <path d="M1600 0 L1920 100 L1920 0 Z" fill="#FFFFFF" opacity="0.04"/>
+
+    <text x="960" y="52" font-family="'PingFang TC', 'Microsoft JhengHei', sans-serif" font-weight="bold" font-size="32" fill="#FFFFFF" text-anchor="middle" letter-spacing="2">提高警覺・遠離詐騙 — 建立個人防詐安全網</text>
+    <text x="960" y="90" font-family="'PingFang TC', 'Microsoft JhengHei', sans-serif" font-size="16" fill="#93C5FD" text-anchor="middle" letter-spacing="1">掌握常見詐騙陷阱與防範應對技巧，保護自己與家人的財產安全</text>
+  </g>
+
+  <!-- 4. 主要內容區域 (三欄式佈局) -->
+
+  <!-- 【左欄】：最新詐騙快訊 (寬 400px, 高 750px) -->
+  <g transform="translate(80, 230)" filter="url(#drop-shadow)">
+    <rect width="400" height="750" rx="16" fill="url(#card-grad)" stroke="#334155" stroke-width="1.5"/>
+    <rect width="400" height="50" rx="16" fill="#1E293B"/>
+    <text x="20" y="32" font-family="'PingFang TC', 'Microsoft JhengHei', sans-serif" font-weight="bold" font-size="18" fill="#38BDF8">🚨 最新詐騙警示</text>
+
+    <!-- 警報項目 1 -->
+    <g transform="translate(20, 70)">
+      <rect width="360" height="110" rx="8" fill="#0F172A" stroke="#DC2626" stroke-width="1"/>
+      <text x="15" y="30" font-family="'PingFang TC', 'Microsoft JhengHei', sans-serif" font-weight="bold" font-size="15" fill="#EF4444">【高風險】假投資博弈簡訊</text>
+      <text x="15" y="58" font-family="'PingFang TC', 'Microsoft JhengHei', sans-serif" font-size="13" fill="#94A3B8">宣稱「穩賺不賠」、「內部飆股」</text>
+      <text x="15" y="80" font-family="'PingFang TC', 'Microsoft JhengHei', sans-serif" font-size="13" fill="#94A3B8">切勿點擊簡訊未知連結或加 Line</text>
+    </g>
+
+    <!-- 警報項目 2 -->
+    <g transform="translate(20, 195)">
+      <rect width="360" height="110" rx="8" fill="#0F172A" stroke="#F59E0B" stroke-width="1"/>
+      <text x="15" y="30" font-family="'PingFang TC', 'Microsoft JhengHei', sans-serif" font-weight="bold" font-size="15" fill="#FBBF24">【新手法】AI 深偽 Voice/Face</text>
+      <text x="15" y="58" font-family="'PingFang TC', 'Microsoft JhengHei', sans-serif" font-size="13" fill="#94A3B8">偽造親友聲音或影像要求緊急轉帳</text>
+      <text x="15" y="80" font-family="'PingFang TC', 'Microsoft JhengHei', sans-serif" font-size="13" fill="#94A3B8">請務必設置通關密語或電話二次確認</text>
+    </g>
+
+    <!-- 警報項目 3 -->
+    <g transform="translate(20, 320)">
+      <rect width="360" height="110" rx="8" fill="#0F172A" stroke="#334155" stroke-width="1"/>
+      <text x="15" y="30" font-family="'PingFang TC', 'Microsoft JhengHei', sans-serif" font-weight="bold" font-size="15" fill="#E2E8F0">網購解除分期付款</text>
+      <text x="15" y="58" font-family="'PingFang TC', 'Microsoft JhengHei', sans-serif" font-size="13" fill="#94A3B8">冒充客服稱扣款錯誤要求操作 ATM</text>
+      <text x="15" y="80" font-family="'PingFang TC', 'Microsoft JhengHei', sans-serif" font-size="13" fill="#94A3B8">ATM 絕對沒有解除設定的功能！</text>
+    </g>
+
+    <!-- 左欄底部宣導 -->
+    <text x="200" y="700" font-family="'PingFang TC', 'Microsoft JhengHei', sans-serif" font-size="13" fill="#64748B" text-anchor="middle">遇可疑訊息請先撥打 165 查證</text>
+  </g>
+
+  <!-- 【中欄】：情境導引 + 縮小版 1/12 按鈕預留卡片 -->
+  <g transform="translate(510, 230)">
+    <!-- 中欄上方說明卡 -->
+    <g filter="url(#drop-shadow)">
+      <rect width="900" height="110" rx="12" fill="url(#card-grad)" stroke="#334155" stroke-width="1.5"/>
+      <text x="450" y="45" font-family="'PingFang TC', 'Microsoft JhengHei', sans-serif" font-weight="bold" font-size="22" fill="#38BDF8" text-anchor="middle">🎮 防詐互動演練與主題切換</text>
+      <text x="450" y="80" font-family="'PingFang TC', 'Microsoft JhengHei', sans-serif" font-size="15" fill="#94A3B8" text-anchor="middle">請透過下方中央面板點擊切換「詐騙手法」剖析或「溝通技巧」對話模擬</text>
+    </g>
+
+    <!-- 中央 1/12 版面大小預留卡片 (560px * 300px = 168,000 sq px ≈ 1/12.3 全螢幕面積) -->
+    <g transform="translate(170, 140)" filter="url(#drop-shadow)">
+      <!-- 白底卡片外殼 -->
+      <rect width="560" height="300" rx="16" fill="url(#center-panel-grad)" stroke="#CBD5E1" stroke-width="2"/>
+      <path d="M 0 12 A 12 12 0 0 1 12 0 L 548 0 A 12 12 0 0 1 560 12 L 560 8 L 0 8 Z" fill="#2563EB"/>
+
+      <!-- 預留區頂部提示文字 -->
+      <text x="280" y="38" font-family="'PingFang TC', 'Microsoft JhengHei', sans-serif" font-weight="bold" font-size="14" fill="#64748B" text-anchor="middle">[ Unity 按鈕疊加區域 (1/12 版面) ]</text>
+
+      <!-- 虛線預留按鈕 1：詐騙手法 -->
+      <g transform="translate(30, 60)">
+        <rect width="230" height="200" rx="12" fill="#FEE2E2" stroke="#F87171" stroke-width="2" stroke-dasharray="6 6"/>
+        <text x="115" y="112" font-family="'PingFang TC', 'Microsoft JhengHei', sans-serif" font-weight="bold" font-size="28" fill="#DC2626" text-anchor="middle">詐騙手法</text>
+      </g>
+
+      <!-- 虛線預留按鈕 2：溝通技巧 -->
+      <g transform="translate(300, 60)">
+        <rect width="230" height="200" rx="12" fill="#DBEAFE" stroke="#60A5FA" stroke-width="2" stroke-dasharray="6 6"/>
+        <text x="115" y="112" font-family="'PingFang TC', 'Microsoft JhengHei', sans-serif" font-weight="bold" font-size="28" fill="#2563EB" text-anchor="middle">溝通技巧</text>
+      </g>
+    </g>
+
+    <!-- 中欄下方提示卡 -->
+    <g transform="translate(0, 470)" filter="url(#drop-shadow)">
+      <rect width="900" height="280" rx="12" fill="url(#card-grad)" stroke="#334155" stroke-width="1.5"/>
+      <text x="30" y="45" font-family="'PingFang TC', 'Microsoft JhengHei', sans-serif" font-weight="bold" font-size="18" fill="#FBBF24">💡 互動學習指引</text>
+      <text x="30" y="85" font-family="'PingFang TC', 'Microsoft JhengHei', sans-serif" font-size="15" fill="#E2E8F0">• 選擇「詐騙手法」：查看最新假投資、假網購、AI 變臉等常見話術與陷阱拆解。</text>
+      <text x="30" y="125" font-family="'PingFang TC', 'Microsoft JhengHei', sans-serif" font-size="15" fill="#E2E8F0">• 選擇「溝通技巧」：學習如何運用「冷靜、拖延、核實」等對話反套路應對歹徒。</text>
+      <text x="30" y="165" font-family="'PingFang TC', 'Microsoft JhengHei', sans-serif" font-size="15" fill="#94A3B8">• 本頁面中央預留區域已精準調整為約全螢幕的 1/12，方便在 Unity Canvas 中完美佈局。</text>
+
+      <rect x="30" y="195" width="840" height="55" rx="8" fill="#0F172A" stroke="#1E293B" stroke-width="1"/>
+      <text x="450" y="228" font-family="'PingFang TC', 'Microsoft JhengHei', sans-serif" font-weight="bold" font-size="15" fill="#38BDF8" text-anchor="middle">防詐叮嚀：凡涉及 ATM 操作、遊戲點數、索取簡訊驗證碼，必為詐騙！</text>
+    </g>
+  </g>
+
+  <!-- 【右欄】：防詐要訣與官方管道 (寬 400px, 高 750px) -->
+  <g transform="translate(1440, 230)" filter="url(#drop-shadow)">
+    <rect width="400" height="750" rx="16" fill="url(#card-grad)" stroke="#334155" stroke-width="1.5"/>
+    <rect width="400" height="50" rx="16" fill="#1E293B"/>
+    <text x="20" y="32" font-family="'PingFang TC', 'Microsoft JhengHei', sans-serif" font-weight="bold" font-size="18" fill="#38BDF8">🛡️ 防詐三要訣</text>
+
+    <!-- 三步驟卡片 (全文字格式) -->
+    <g transform="translate(20, 70)">
+      <circle cx="24" cy="24" r="16" fill="#2563EB"/>
+      <text x="24" y="30" font-family="'PingFang TC', 'Microsoft JhengHei', sans-serif" font-weight="bold" font-size="16" fill="#FFFFFF" text-anchor="middle">1</text>
+      <text x="50" y="22" font-family="'PingFang TC', 'Microsoft JhengHei', sans-serif" font-weight="bold" font-size="16" fill="#E2E8F0">保持冷靜</text>
+      <text x="50" y="42" font-family="'PingFang TC', 'Microsoft JhengHei', sans-serif" font-size="13" fill="#94A3B8">遇到恐嚇或急迫要求切勿慌張</text>
+
+      <circle cx="24" cy="84" r="16" fill="#2563EB"/>
+      <text x="24" y="90" font-family="'PingFang TC', 'Microsoft JhengHei', sans-serif" font-weight="bold" font-size="16" fill="#FFFFFF" text-anchor="middle">2</text>
+      <text x="50" y="82" font-family="'PingFang TC', 'Microsoft JhengHei', sans-serif" font-weight="bold" font-size="16" fill="#E2E8F0">細心查證</text>
+      <text x="50" y="102" font-family="'PingFang TC', 'Microsoft JhengHei', sans-serif" font-size="13" fill="#94A3B8">掛斷電話並自行撥打官方專線</text>
+
+      <circle cx="24" cy="144" r="16" fill="#2563EB"/>
+      <text x="24" y="150" font-family="'PingFang TC', 'Microsoft JhengHei', sans-serif" font-weight="bold" font-size="16" fill="#FFFFFF" text-anchor="middle">3</text>
+      <text x="50" y="142" font-family="'PingFang TC', 'Microsoft JhengHei', sans-serif" font-weight="bold" font-size="16" fill="#E2E8F0">立即報警</text>
+      <text x="50" y="162" font-family="'PingFang TC', 'Microsoft JhengHei', sans-serif" font-size="13" fill="#94A3B8">第一時間撥打 165 或 110 求助</text>
+    </g>
+
+    <!-- 官方查證連結區 (全文字格式) -->
+    <line x1="20" y1="270" x2="380" y2="270" stroke="#334155" stroke-width="1"/>
+    <text x="20" y="300" font-family="'PingFang TC', 'Microsoft JhengHei', sans-serif" font-weight="bold" font-size="16" fill="#38BDF8">🔗 官方查證管道</text>
+
+    <g transform="translate(20, 320)">
+      <rect width="360" height="50" rx="8" fill="#0F172A"/>
+      <text x="18" y="30" font-family="'PingFang TC', 'Microsoft JhengHei', sans-serif" font-size="14" fill="#E2E8F0">165 全民防詐網線上檢舉</text>
+    </g>
+    <g transform="translate(20, 380)">
+      <rect width="360" height="50" rx="8" fill="#0F172A"/>
+      <text x="18" y="30" font-family="'PingFang TC', 'Microsoft JhengHei', sans-serif" font-size="14" fill="#E2E8F0">內政部警政署 165 臉書粉專</text>
+    </g>
+    <g transform="translate(20, 440)">
+      <rect width="360" height="50" rx="8" fill="#0F172A"/>
+      <text x="18" y="30" font-family="'PingFang TC', 'Microsoft JhengHei', sans-serif" font-size="14" fill="#E2E8F0">LINE 官方防詐查證帳號</text>
+    </g>
+  </g>
+
+  <!-- 5. 頁尾 Footer (60px) -->
+  <g transform="translate(0, 1020)">
+    <rect width="1920" height="60" fill="#090D16"/>
+    <line x1="0" y1="0" x2="1920" y2="0" stroke="#1E293B" stroke-width="1"/>
+    <text x="960" y="35" font-family="'PingFang TC', 'Microsoft JhengHei', sans-serif" font-size="14" fill="#64748B" text-anchor="middle">© 2026 全民防詐宣導資訊網｜內政部警政署 165 反詐騙諮詢專線 版權所有</text>
+  </g>
+</svg>

@@ -9,6 +9,14 @@ public class SubObjectInfo
     public GameObject subGameObject;
     public bool isFound = false;
     public bool isVerified = false;
+
+    [Header("Sub Object Names")]
+    public string foundSubName = "";    // isFound 時的稱呼
+    public string verifiedSubName = ""; // isVerified 時的稱呼
+
+    [Header("Sub Object Ink Configuration")]
+    public string foundInkKnot = "";    // isFound 時觸發的 Ink Knot
+    public string verifiedInkKnot = ""; // isVerified 時觸發的 Ink Knot
 }
 
 public class InspectableObject : MonoBehaviour
@@ -18,6 +26,10 @@ public class InspectableObject : MonoBehaviour
     public bool useCustomCrop;
     public Rect cropRect;
     public bool isMainEvidenceUnlocked;
+
+    [Header("Inspect Settings")]
+    [Tooltip("若大於 0 則覆蓋 InspectManager 內設定的預設 inspectDistance，未填或 <=0 則依循 InspectManager")]
+    public float overrideInspectDistance = -1f;
 
     [Header("Ink Configuration")]
     public string allFoundInkKnot = "";
@@ -61,32 +73,73 @@ public class InspectableObject : MonoBehaviour
         return null;
     }
 
+    // 【修改】只計算當前 Active 的子物件總數
+    public int GetActiveSubObjectCount()
+    {
+        if (subObjectInfos == null || subObjectInfos.Count == 0) return 0;
+        int count = 0;
+        foreach (var sub in subObjectInfos)
+        {
+            if (sub != null && sub.subGameObject != null && sub.subGameObject.activeInHierarchy)
+            {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    // 【修改】只檢查 Active 的子物件是否皆已找到
     public bool IsAllSubObjectsFound()
     {
         if (subObjectInfos == null || subObjectInfos.Count == 0) return false;
         foreach (var sub in subObjectInfos)
         {
-            if (!sub.isFound) return false;
+            if (sub != null && sub.subGameObject != null && sub.subGameObject.activeInHierarchy)
+            {
+                if (!sub.isFound) return false;
+            }
         }
         return true;
     }
 
+    // 【修改】只檢查 Active 的子物件是否皆已驗證
     public bool IsAllSubObjectsVerified()
     {
         if (subObjectInfos == null || subObjectInfos.Count == 0) return false;
         foreach (var sub in subObjectInfos)
         {
-            if (!sub.isVerified) return false;
+            if (sub != null && sub.subGameObject != null && sub.subGameObject.activeInHierarchy)
+            {
+                if (!sub.isVerified) return false;
+            }
         }
         return true;
     }
 
+    // 【修改】只計算 Active 且已找到的數量
     public int GetFoundCount()
     {
         int count = 0;
         foreach (var sub in subObjectInfos)
         {
-            if (sub.isFound) count++;
+            if (sub != null && sub.subGameObject != null && sub.subGameObject.activeInHierarchy)
+            {
+                if (sub.isFound) count++;
+            }
+        }
+        return count;
+    }
+
+    // 【新增】只計算 Active 且已驗證的數量
+    public int GetVerifiedCount()
+    {
+        int count = 0;
+        foreach (var sub in subObjectInfos)
+        {
+            if (sub != null && sub.subGameObject != null && sub.subGameObject.activeInHierarchy)
+            {
+                if (sub.isVerified) count++;
+            }
         }
         return count;
     }
@@ -149,6 +202,16 @@ public class InspectableObject : MonoBehaviour
                 if (!sub.isVerified)
                 {
                     sub.isVerified = true;
+
+                    if (!string.IsNullOrEmpty(sub.verifiedInkKnot))
+                    {
+                        GameManager gm = FindObjectOfType<GameManager>();
+                        if (gm != null)
+                        {
+                            gm.ExecuteKnot(sub.verifiedInkKnot);
+                        }
+                    }
+
                     return true;
                 }
             }

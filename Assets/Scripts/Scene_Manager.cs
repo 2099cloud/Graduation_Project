@@ -1,7 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.UI; // 1. 引入 UI 命名空間以使用 Image
+using UnityEngine.UI; // 引入 UI 命名空間以使用 Image
 using UnityEngine.SceneManagement;
 
 public class Scene_Manager : MonoBehaviour
@@ -53,5 +53,21 @@ public class Scene_Manager : MonoBehaviour
     public void LoadScene()
     {
         SceneManager.LoadScene("scene");
+    }
+
+    // ==========================================
+    // 【新增】專門給 Timeline 結尾 Signal 呼叫的函數 (上傳資料並載入 Scene 2)
+    // ==========================================
+    public void LoadScene2()
+    {
+        // 1. 上傳累積的 Analytics 資料
+        if (AnalyticsManager.Instance != null)
+        {
+            AnalyticsManager.Instance.UploadAllEvents();
+            Debug.Log("[Scene Manager] Analytics uploaded before loading Scene 2.");
+        }
+
+        // 2. 切換至 Scene 2
+        SceneManager.LoadScene(2);
     }
 }

@@ -1,4 +1,6 @@
 === Story1_1 ===
+.# sfx: fadeout.2.5
+.#bgm:CHEAT1
 .#Skybox.Day
 .#LightingData_Day
 .#Main Character.SetActive.true
@@ -12,6 +14,7 @@
 .#Task.text.應門
 .#door002.TargetKnot=""
 .#Front_door.TargetKnot="Story1_2"
+.#OpenTutorial(0)
 ->DONE
 
 === Story1_2 ===

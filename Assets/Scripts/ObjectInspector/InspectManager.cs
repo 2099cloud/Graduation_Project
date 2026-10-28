@@ -4,6 +4,8 @@ using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.EventSystems;
 using UnityEngine.Rendering.Universal;
+using TMPro;
+using System.Reflection;
 
 /// <summary>
 /// Global Singleton Manager for 3D inspection, dynamic UI slots, and camera handling.
@@ -15,6 +17,15 @@ public class InspectManager : MonoBehaviour
     [Header("UI References")]
     public CanvasGroup fadeGroup;
     public RectTransform inventoryHotbar;
+    public TextMeshProUGUI titleText;
+    public GameObject taskText;
+    public GameObject closeButton; // 檢視專用關閉按鈕
+
+    [Header("Sub Object UI Settings")]
+    public GameObject subObjectUIPrefab;
+    public Transform subObjectUIParent;
+    public float subObjectUIOffsetY = 80f;
+    public float subObjectUISpacing = 20f;
 
     [Header("Hotbar Animation Settings")]
     public float hotbarOffsetY = 100f;
@@ -22,7 +33,8 @@ public class InspectManager : MonoBehaviour
 
     [Header("Dynamic UI Slot Settings")]
     public Vector2 slotSize = new Vector2(80f, 80f);
-    [Tooltip("Low saturation / dim color when not fully unlocked")]
+    public Sprite slotFrameSprite;
+    public Vector2 slotFrameSize = new Vector2(100f, 100f);
     public Color dimColor = new Color(0.35f, 0.35f, 0.35f, 1f);
 
     [Header("Rotation and Zoom Settings")]
@@ -37,6 +49,23 @@ public class InspectManager : MonoBehaviour
     public Vector3 positionOffset = Vector3.zero;
     public LayerMask inspectLayer;
 
+    [Header("VFX Settings")]
+    [Tooltip("Success effect prefab spawned at mouse position")]
+    public GameObject successEffectPrefab;
+
+    [Tooltip("VFX Camera")]
+    public Camera vfxCamera;
+
+    [Tooltip("Effect distance from camera")]
+    public float effectDistanceFromCamera = 5.0f;
+
+    [Tooltip("Effect sensitivity adjustment")]
+    public Vector2 effectSensitivity = new Vector2(1.0f, 1.0f);
+
+    [Header("Audio Settings")]
+    [Tooltip("Sound ID played when sub-object found successfully")]
+    public string subObjectFoundSoundID = "Success";
+
     private GameObject clonedObject;
     private Camera inspectCamera;
     private bool isInspecting = false;
@@ -45,17 +74,32 @@ public class InspectManager : MonoBehaviour
 
     private InspectableObject currentTarget;
 
+    private GameObject activeInspectEffect;
+
     private Dictionary<InspectableObject, Image> activeDimSlotImages = new Dictionary<InspectableObject, Image>();
     private Dictionary<InspectableObject, Image> activeColorSlotImages = new Dictionary<InspectableObject, Image>();
+    private Dictionary<InspectableObject, GameObject> activeFrameSlotObjects = new Dictionary<InspectableObject, GameObject>();
+
+    private List<GameObject> activeSubObjectUIs = new List<GameObject>();
+
+    private GameObject currentHoverPanel;
+    private List<GameObject> spawnedHoverSubUIs = new List<GameObject>();
+    private Coroutine clearHoverCoroutine;
+
+    private bool isHoverDragging = false;
 
     private bool isTimelinePlaying = false;
 
     private Dictionary<MonoBehaviour, bool> previousGameManagerScriptStates = new Dictionary<MonoBehaviour, bool>();
 
+    private Dictionary<object, float> originalAxisSpeeds = new Dictionary<object, float>();
+
     private Vector2 hotbarOriginalPos;
     private Vector2 hotbarLoweredPos;
     private bool isHotbarVisible = false;
     private Coroutine hotbarAnimCoroutine;
+
+    private Dictionary<string, string> labelDictionary = new Dictionary<string, string>();
 
     private void Awake()
     {
@@ -71,29 +115,82 @@ public class InspectManager : MonoBehaviour
 
         if (inventoryHotbar != null)
         {
-            EnsureHorizontalLayout();
+            EnsureVerticalLayout();
             hotbarOriginalPos = inventoryHotbar.anchoredPosition;
-            hotbarLoweredPos = hotbarOriginalPos - new Vector2(0f, hotbarOffsetY);
+            hotbarLoweredPos = hotbarOriginalPos - new Vector2(hotbarOffsetY, 0f);
             inventoryHotbar.anchoredPosition = hotbarLoweredPos;
             inventoryHotbar.gameObject.SetActive(false);
             isHotbarVisible = false;
         }
+
+        if (closeButton != null)
+        {
+            closeButton.SetActive(false);
+        }
+
+        LoadLabelCSV();
     }
 
     private void Update()
     {
-        if (!isInspecting)
+        CheckVirtualBrowserState();
+
+        if (isInspecting)
         {
-            if (Input.GetKeyDown(KeyCode.E) && !isTimelinePlaying)
-            {
-                ToggleHotbar();
-            }
-            HandleWorldObjectSelection();
+            MaintainGameManagerControlsDisabled();
+            HandleInput();
+            UpdateInspectEffectPosition();
             return;
         }
 
-        MaintainGameManagerControlsDisabled();
-        HandleInput();
+        if (Input.GetKeyDown(KeyCode.E) && !isTimelinePlaying)
+        {
+            ToggleHotbar();
+        }
+        HandleWorldObjectSelection();
+    }
+
+    private void CheckVirtualBrowserState()
+    {
+        if (VirtualBrowserController.Instance != null && VirtualBrowserController.Instance.backgroundPanel != null)
+        {
+            bool isBrowserOpen = VirtualBrowserController.Instance.backgroundPanel.activeInHierarchy;
+
+            if (isBrowserOpen && !isHotbarVisible && !isInspecting && !isTimelinePlaying)
+            {
+                SetHotbarVisible(true, true);
+            }
+            else if (!isBrowserOpen && isHotbarVisible && !isInspecting && !isTimelinePlaying)
+            {
+                SetHotbarVisible(false, true);
+            }
+        }
+    }
+
+    private void LoadLabelCSV()
+    {
+        TextAsset csvAsset = Resources.Load<TextAsset>("CSV/LabelGenerator");
+        if (csvAsset == null)
+        {
+            Debug.LogWarning("[InspectManager Debug] Resources/CSV/LabelGenerator.csv file not found.");
+            return;
+        }
+
+        string[] lines = csvAsset.text.Split(new char[] { '\r', '\n' }, System.StringSplitOptions.RemoveEmptyEntries);
+        foreach (string line in lines)
+        {
+            string[] cols = line.Split(',');
+            if (cols.Length >= 2)
+            {
+                string displayName = cols[0].Trim();
+                string hierarchyName = cols[1].Trim();
+
+                if (!string.IsNullOrEmpty(hierarchyName) && !labelDictionary.ContainsKey(hierarchyName))
+                {
+                    labelDictionary.Add(hierarchyName, displayName);
+                }
+            }
+        }
     }
 
     public void ToggleHotbar()
@@ -149,17 +246,14 @@ public class InspectManager : MonoBehaviour
         if (!show)
         {
             inventoryHotbar.gameObject.SetActive(false);
+            ClearHoverSubObjectsImmediate();
         }
         hotbarAnimCoroutine = null;
     }
 
-    /// <summary>
-    /// Call from Timeline or GameManager to toggle Timeline playing state.
-    /// </summary>
     public void SetTimelinePlaying(bool isPlaying)
     {
         isTimelinePlaying = isPlaying;
-        Debug.Log($"[InspectManager Debug] Timeline playing state changed to: {isPlaying}");
 
         if (inventoryHotbar != null && isPlaying)
         {
@@ -182,11 +276,7 @@ public class InspectManager : MonoBehaviour
     {
         if (Input.GetMouseButtonDown(0))
         {
-            if (isTimelinePlaying)
-            {
-                Debug.LogWarning("[InspectManager Debug] World object click ignored because isTimelinePlaying is TRUE. Call SetTimelinePlaying(false) when timeline finishes.");
-                return;
-            }
+            if (isTimelinePlaying) return;
 
             if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject())
             {
@@ -200,56 +290,35 @@ public class InspectManager : MonoBehaviour
                 int uiLayer = LayerMask.NameToLayer("UI");
                 RaycastResult uiHit = results.Find(r => r.gameObject.layer == uiLayer);
 
-                if (uiHit.isValid)
-                {
-                    Debug.Log($"[InspectManager Debug] Mouse over UI [{uiHit.gameObject.name}], ignoring world object click.");
-                    return;
-                }
+                if (uiHit.isValid) return;
             }
 
             Camera mainCam = Camera.main;
-            if (mainCam == null)
-            {
-                Debug.LogWarning("[InspectManager Debug] MainCamera tag not found! Cannot cast Raycast.");
-                return;
-            }
+            if (mainCam == null) return;
 
             Ray ray = mainCam.ScreenPointToRay(Input.mousePosition);
-            Debug.Log($"[InspectManager Debug] Casting Raycast from camera: {mainCam.name}, mouse pos: {Input.mousePosition}");
 
             if (Physics.Raycast(ray, out RaycastHit hit, 100f))
             {
-                Debug.Log($"[InspectManager Debug] Raycast hit collider: [{hit.collider.gameObject.name}] (Layer: {LayerMask.LayerToName(hit.collider.gameObject.layer)})");
-
                 InspectableObject target = hit.collider.GetComponent<InspectableObject>();
                 if (target == null) target = hit.collider.GetComponentInChildren<InspectableObject>();
                 if (target == null) target = hit.collider.GetComponentInParent<InspectableObject>();
 
                 if (target != null && target.enabled)
                 {
-                    Debug.Log($"<color=green>[InspectManager Debug] InspectableObject found: {target.name}. Opening inspect mode.</color>");
                     StartInspect(target);
                 }
-                else if (target != null && !target.enabled)
-                {
-                    Debug.LogWarning($"[InspectManager Debug] Hit [{hit.collider.name}], but InspectableObject component is disabled.");
-                }
-                else
-                {
-                    Debug.LogWarning($"[InspectManager Debug] Hit [{hit.collider.name}], but no InspectableObject script attached in hierarchy.");
-                }
-            }
-            else
-            {
-                Debug.Log("[InspectManager Debug] Raycast missed all 3D colliders.");
             }
         }
     }
 
-    private void EnsureHorizontalLayout()
+    private void EnsureVerticalLayout()
     {
-        HorizontalLayoutGroup layout = inventoryHotbar.GetComponent<HorizontalLayoutGroup>();
-        if (layout == null) layout = inventoryHotbar.gameObject.AddComponent<HorizontalLayoutGroup>();
+        HorizontalLayoutGroup oldHorizontal = inventoryHotbar.GetComponent<HorizontalLayoutGroup>();
+        if (oldHorizontal != null) Destroy(oldHorizontal);
+
+        VerticalLayoutGroup layout = inventoryHotbar.GetComponent<VerticalLayoutGroup>();
+        if (layout == null) layout = inventoryHotbar.gameObject.AddComponent<VerticalLayoutGroup>();
 
         layout.childAlignment = TextAnchor.MiddleCenter;
         layout.childControlWidth = false;
@@ -261,13 +330,13 @@ public class InspectManager : MonoBehaviour
 
     public void StartInspect(InspectableObject target)
     {
-        if (isInspecting || target == null || !target.enabled || isTimelinePlaying)
-        {
-            Debug.LogWarning($"[InspectManager Debug] Cannot StartInspect. isInspecting={isInspecting}, targetIsNull={target == null}, targetDisabled={(target != null && !target.enabled)}, isTimelinePlaying={isTimelinePlaying}");
-            return;
-        }
+        if (isInspecting || target == null || !target.enabled || isTimelinePlaying) return;
 
-        Debug.Log($"<color=yellow>[InspectManager Debug] Starting inspect mode for target: {target.name}</color>");
+        GameManager gmCheck = FindObjectOfType<GameManager>();
+        if (gmCheck != null)
+        {
+            gmCheck.RecordObjectInspected(target);
+        }
 
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
@@ -275,14 +344,32 @@ public class InspectManager : MonoBehaviour
         SetCurrentTarget(target);
         isInspecting = true;
 
+        if (closeButton != null)
+        {
+            closeButton.SetActive(true);
+        }
+
         PauseGameManagerControls();
+
+        if (vfxCamera == null)
+        {
+            GameObject vfxCamObj = GameObject.Find("VFX Camera");
+            if (vfxCamObj != null) vfxCamera = vfxCamObj.GetComponent<Camera>();
+        }
+
+        GameManager gm = FindObjectOfType<GameManager>();
+        if (gm != null)
+        {
+            gm.SetPlayerInputActive(false);
+        }
 
         Camera mainCam = Camera.main;
         if (mainCam == null)
         {
-            Debug.LogError("[InspectManager Debug] MainCamera not found! Aborting inspect.");
             isInspecting = false;
+            if (closeButton != null) closeButton.SetActive(false);
             RestoreGameManagerControls();
+            if (gm != null) gm.SetPlayerInputActive(true);
             return;
         }
 
@@ -297,10 +384,14 @@ public class InspectManager : MonoBehaviour
             SetHotbarVisible(true, true);
         }
 
+        if (taskText != null) taskText.SetActive(false);
+
         SetupMainObjectSlot(currentTarget);
         CreateInspectCameraURP(mainCam);
 
-        Vector3 targetPosition = inspectCamera.transform.position + (inspectCamera.transform.forward * inspectDistance);
+        float activeDistance = (target.overrideInspectDistance > 0f) ? target.overrideInspectDistance : inspectDistance;
+
+        Vector3 targetPosition = inspectCamera.transform.position + (inspectCamera.transform.forward * activeDistance);
         targetPosition += inspectCamera.transform.right * positionOffset.x;
         targetPosition += inspectCamera.transform.up * positionOffset.y;
         targetPosition += inspectCamera.transform.forward * positionOffset.z;
@@ -310,13 +401,52 @@ public class InspectManager : MonoBehaviour
         clonedObject = Instantiate(target.gameObject, targetPosition, targetRotation);
         clonedObject.name = $"[INSPECT_CLONE] {target.gameObject.name}";
 
+        RebindCloneSubObjectsState(target, clonedObject);
+
         originalClonedScale = clonedObject.transform.localScale;
         currentZoomMultiplier = 1f;
 
         int layerIndex = MaskToLayer(inspectLayer);
         SetLayerRecursively(clonedObject, layerIndex);
 
-        Debug.Log($"[InspectManager Debug] Cloned object [{clonedObject.name}] created on Layer: {LayerMask.LayerToName(layerIndex)}");
+        if (titleText != null)
+        {
+            titleText.gameObject.SetActive(true);
+            string hierarchyName = target.gameObject.name;
+            titleText.text = labelDictionary.TryGetValue(hierarchyName, out string displayName) ? displayName : hierarchyName;
+        }
+
+        UpdateSubObjectUIs();
+    }
+
+    private void RebindCloneSubObjectsState(InspectableObject originalTarget, GameObject cloneObj)
+    {
+        InspectableObject cloneInspect = cloneObj.GetComponent<InspectableObject>() ?? cloneObj.GetComponentInChildren<InspectableObject>();
+        if (cloneInspect == null || cloneInspect.subObjectInfos == null) return;
+
+        foreach (var sub in cloneInspect.subObjectInfos)
+        {
+            if (sub != null && sub.subGameObject != null)
+            {
+                string childName = sub.subGameObject.name;
+                Transform foundT = FindChildByName(cloneObj.transform, childName);
+                if (foundT != null)
+                {
+                    sub.subGameObject = foundT.gameObject;
+                }
+            }
+        }
+    }
+
+    private Transform FindChildByName(Transform parent, string targetName)
+    {
+        foreach (Transform child in parent)
+        {
+            if (child.name == targetName) return child;
+            Transform res = FindChildByName(child, targetName);
+            if (res != null) return res;
+        }
+        return null;
     }
 
     public void SetupMainObjectSlot(InspectableObject target)
@@ -333,6 +463,20 @@ public class InspectManager : MonoBehaviour
             slotRect.anchorMin = new Vector2(0.5f, 0.5f);
             slotRect.anchorMax = new Vector2(0.5f, 0.5f);
             slotRect.pivot = new Vector2(0.5f, 0.5f);
+
+            GameObject frameGo = new GameObject("FrameIcon", typeof(RectTransform), typeof(Image));
+            frameGo.transform.SetParent(slotGo.transform, false);
+
+            RectTransform frameRect = frameGo.GetComponent<RectTransform>();
+            frameRect.anchorMin = new Vector2(0.5f, 0.5f);
+            frameRect.anchorMax = new Vector2(0.5f, 0.5f);
+            frameRect.pivot = new Vector2(0.5f, 0.5f);
+            frameRect.sizeDelta = slotFrameSize;
+
+            Image frameImg = frameGo.GetComponent<Image>();
+            frameImg.sprite = slotFrameSprite;
+            frameImg.raycastTarget = false;
+            frameGo.SetActive(false);
 
             GameObject dimGo = new GameObject("DimIcon", typeof(RectTransform), typeof(Image));
             dimGo.transform.SetParent(slotGo.transform, false);
@@ -368,10 +512,12 @@ public class InspectManager : MonoBehaviour
             InspectableObject capturedTarget = target;
             slotBtn.onClick.AddListener(() => SetCurrentTarget(capturedTarget));
 
+            HotbarSlotPointerHandler hoverHandler = slotGo.AddComponent<HotbarSlotPointerHandler>();
+            hoverHandler.targetObject = capturedTarget;
+
             activeDimSlotImages[target] = dimImg;
             activeColorSlotImages[target] = colorImg;
-
-            Debug.Log($"[InspectManager Debug] Dynamic UI slot created: Slot_{target.mainInfoID}");
+            activeFrameSlotObjects[target] = frameGo;
         }
 
         Image dimImage = activeDimSlotImages[target];
@@ -416,7 +562,11 @@ public class InspectManager : MonoBehaviour
     {
         if (target == null) return;
         currentTarget = target;
-        Debug.Log($"<color=cyan>[InspectManager Debug] Current target switched to: {target.mainInfoID}</color>");
+
+        if (isInspecting)
+        {
+            UpdateSubObjectUIs();
+        }
     }
 
     public void RegisterEvidenceSlot(InspectableObject target)
@@ -432,9 +582,9 @@ public class InspectManager : MonoBehaviour
         Image colorImage = activeColorSlotImages[target];
         if (dimImage == null || colorImage == null) return;
 
-        int totalSub = (target.subObjectInfos != null) ? target.subObjectInfos.Count : 0;
+        int totalSub = target.GetActiveSubObjectCount();
         int foundSub = target.GetFoundCount();
-        int verifiedSub = GetVerifiedCount(target);
+        int verifiedSub = target.GetVerifiedCount();
 
         float foundRatio = (totalSub > 0) ? (float)foundSub / totalSub : 1f;
         dimImage.fillAmount = foundRatio;
@@ -442,19 +592,23 @@ public class InspectManager : MonoBehaviour
         float verifiedRatio = (totalSub > 0) ? (float)verifiedSub / totalSub : 1f;
         colorImage.fillAmount = verifiedRatio;
 
-        dimImage.enabled = true;
-        colorImage.enabled = true;
-        dimImage.gameObject.SetActive(true);
-        colorImage.gameObject.SetActive(true);
+        bool shouldShow = foundSub > 0;
 
-        Debug.Log($"[InspectManager Debug] Update [{target.mainInfoID}] UI -> 3D Found: {foundSub}/{totalSub} ({foundRatio:P0}), Verified: {verifiedSub}/{totalSub} ({verifiedRatio:P0})");
+        if (activeFrameSlotObjects.TryGetValue(target, out GameObject frameGo) && frameGo != null)
+        {
+            frameGo.SetActive(shouldShow);
+        }
+
+        dimImage.enabled = shouldShow;
+        colorImage.enabled = shouldShow;
+        dimImage.gameObject.SetActive(shouldShow);
+        colorImage.gameObject.SetActive(shouldShow);
 
         if (verifiedRatio >= 1f && totalSub > 0)
         {
             if (!target.isMainEvidenceUnlocked)
             {
                 target.isMainEvidenceUnlocked = true;
-                Debug.Log($"<color=green>[Evidence Unlocked] Object {target.mainInfoID} fully verified and unlocked!</color>");
 
                 if (EvidenceManager.Instance != null)
                 {
@@ -464,27 +618,296 @@ public class InspectManager : MonoBehaviour
         }
     }
 
-    private int GetVerifiedCount(InspectableObject target)
+    private void UpdateSubObjectUIs()
     {
-        if (target == null || target.subObjectInfos == null) return 0;
+        ClearSubObjectUIs();
 
-        int count = 0;
-        foreach (var sub in target.subObjectInfos)
+        if (currentTarget == null || currentTarget.subObjectInfos == null || subObjectUIPrefab == null) return;
+
+        Transform parentTransform = subObjectUIParent;
+
+        if (parentTransform == null)
         {
-            if (sub != null && sub.isVerified)
+            Canvas canvas = null;
+            if (inventoryHotbar != null)
             {
-                count++;
+                canvas = inventoryHotbar.GetComponentInParent<Canvas>();
+            }
+            if (canvas == null)
+            {
+                canvas = FindObjectOfType<Canvas>();
+            }
+            if (canvas == null) return;
+
+            GameObject container = GameObject.Find("[SubObjectUI_Container]");
+            if (container == null)
+            {
+                container = new GameObject("[SubObjectUI_Container]", typeof(RectTransform), typeof(HorizontalLayoutGroup), typeof(ContentSizeFitter));
+                container.transform.SetParent(canvas.transform, false);
+
+                RectTransform containerRect = container.GetComponent<RectTransform>();
+                containerRect.anchorMin = new Vector2(0.5f, 0f);
+                containerRect.anchorMax = new Vector2(0.5f, 0f);
+                containerRect.pivot = new Vector2(0.5f, 0f);
+
+                HorizontalLayoutGroup layout = container.GetComponent<HorizontalLayoutGroup>();
+                layout.childAlignment = TextAnchor.MiddleCenter;
+                layout.childControlWidth = false;
+                layout.childControlHeight = false;
+                layout.childForceExpandWidth = false;
+                layout.childForceExpandHeight = false;
+
+                ContentSizeFitter fitter = container.GetComponent<ContentSizeFitter>();
+                fitter.horizontalFit = ContentSizeFitter.FitMode.PreferredSize;
+                fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+            }
+
+            RectTransform cRect = container.GetComponent<RectTransform>();
+            cRect.anchoredPosition = new Vector2(0f, subObjectUIOffsetY);
+
+            HorizontalLayoutGroup hLayout = container.GetComponent<HorizontalLayoutGroup>();
+            if (hLayout != null) hLayout.spacing = subObjectUISpacing;
+
+            parentTransform = container.transform;
+        }
+
+        foreach (var sub in currentTarget.subObjectInfos)
+        {
+            if (sub != null && sub.subGameObject != null && sub.subGameObject.activeInHierarchy)
+            {
+                GameObject uiObj = Instantiate(subObjectUIPrefab, parentTransform, false);
+                activeSubObjectUIs.Add(uiObj);
+
+                TextMeshProUGUI tmpText = uiObj.GetComponentInChildren<TextMeshProUGUI>();
+                if (tmpText != null)
+                {
+                    if (sub.isVerified)
+                    {
+                        tmpText.text = !string.IsNullOrEmpty(sub.verifiedSubName) ? sub.verifiedSubName : tmpText.text;
+                    }
+                    else if (sub.isFound)
+                    {
+                        tmpText.text = !string.IsNullOrEmpty(sub.foundSubName) ? sub.foundSubName : tmpText.text;
+                    }
+                }
             }
         }
-        return count;
+    }
+
+    private void ClearSubObjectUIs()
+    {
+        foreach (var uiObj in activeSubObjectUIs)
+        {
+            if (uiObj != null) Destroy(uiObj);
+        }
+        activeSubObjectUIs.Clear();
+    }
+
+    public void ShowHoverSubObjects(InspectableObject target, Transform slotTransform)
+    {
+        if (clearHoverCoroutine != null)
+        {
+            StopCoroutine(clearHoverCoroutine);
+            clearHoverCoroutine = null;
+        }
+
+        if (currentHoverPanel != null) return;
+
+        if (target == null || target.subObjectInfos == null || subObjectUIPrefab == null) return;
+
+        List<SubObjectInfo> foundSubs = target.subObjectInfos.FindAll(s => s != null && s.subGameObject != null && s.subGameObject.activeInHierarchy && s.isFound);
+        if (foundSubs.Count == 0) return;
+
+        currentHoverPanel = new GameObject("[HoverSubObjectPanel]", typeof(RectTransform), typeof(VerticalLayoutGroup), typeof(ContentSizeFitter));
+        currentHoverPanel.transform.SetParent(slotTransform, false);
+
+        currentHoverPanel.AddComponent<HoverPanelPointerHandler>();
+
+        RectTransform panelRect = currentHoverPanel.GetComponent<RectTransform>();
+        panelRect.anchorMin = new Vector2(1f, 0.5f);
+        panelRect.anchorMax = new Vector2(1f, 0.5f);
+        panelRect.pivot = new Vector2(0f, 0.5f);
+        panelRect.anchoredPosition = new Vector2(15f, 0f);
+
+        VerticalLayoutGroup layout = currentHoverPanel.GetComponent<VerticalLayoutGroup>();
+        layout.childAlignment = TextAnchor.MiddleLeft;
+        layout.childControlWidth = false;
+        layout.childControlHeight = false;
+        layout.childForceExpandWidth = false;
+        layout.childForceExpandHeight = false;
+        layout.spacing = 10f;
+
+        ContentSizeFitter fitter = currentHoverPanel.GetComponent<ContentSizeFitter>();
+        fitter.horizontalFit = ContentSizeFitter.FitMode.PreferredSize;
+        fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+        foreach (var sub in foundSubs)
+        {
+            GameObject uiObj = Instantiate(subObjectUIPrefab, currentHoverPanel.transform, false);
+            spawnedHoverSubUIs.Add(uiObj);
+
+            if (uiObj.GetComponent<SubObjectUIDragHandler>() == null)
+            {
+                uiObj.AddComponent<SubObjectUIDragHandler>();
+            }
+
+            TextMeshProUGUI tmpText = uiObj.GetComponentInChildren<TextMeshProUGUI>();
+            if (tmpText != null)
+            {
+                if (sub.isVerified)
+                {
+                    tmpText.text = !string.IsNullOrEmpty(sub.verifiedSubName) ? sub.verifiedSubName : tmpText.text;
+                }
+                else
+                {
+                    tmpText.text = !string.IsNullOrEmpty(sub.foundSubName) ? sub.foundSubName : tmpText.text;
+                }
+            }
+        }
+    }
+
+    public void SetHoverDraggingState(bool isDragging)
+    {
+        isHoverDragging = isDragging;
+        if (isDragging)
+        {
+            CancelDelayClearHover();
+        }
+    }
+
+    public void DelayClearHoverSubObjects(float delay = 0.25f)
+    {
+        if (isHoverDragging) return;
+
+        if (clearHoverCoroutine != null) StopCoroutine(clearHoverCoroutine);
+        clearHoverCoroutine = StartCoroutine(HoverDelayClear(delay));
+    }
+
+    public void CancelDelayClearHover()
+    {
+        if (clearHoverCoroutine != null)
+        {
+            StopCoroutine(clearHoverCoroutine);
+            clearHoverCoroutine = null;
+        }
+    }
+
+    private IEnumerator HoverDelayClear(float delay)
+    {
+        yield return new WaitForSeconds(delay);
+
+        if (!isHoverDragging)
+        {
+            ClearHoverSubObjectsImmediate();
+        }
+        clearHoverCoroutine = null;
+    }
+
+    public void ClearHoverSubObjectsImmediate()
+    {
+        if (isHoverDragging) return;
+
+        CancelDelayClearHover();
+
+        foreach (var uiObj in spawnedHoverSubUIs)
+        {
+            if (uiObj != null) Destroy(uiObj);
+        }
+        spawnedHoverSubUIs.Clear();
+
+        if (currentHoverPanel != null)
+        {
+            Destroy(currentHoverPanel);
+            currentHoverPanel = null;
+        }
+    }
+
+    /// <summary>
+    /// 記錄線索蒐集能力（Search & Exploration Profile）相關變數與分析維度至後端 (keys translated to Chinese)
+    /// </summary>
+    private void LogSearchExplorationMetrics(string actionEventName)
+    {
+        if (AnalyticsManager.Instance == null) return;
+
+        InspectableObject[] allInspectables = FindObjectsOfType<InspectableObject>(true);
+        int totalObjects = 0;
+        int foundObjects = 0;
+        int totalSubInfos = 0;
+        int foundSubInfos = 0;
+
+        if (allInspectables != null)
+        {
+            foreach (var obj in allInspectables)
+            {
+                if (obj == null || obj.name.Contains("[INSPECT_CLONE]")) continue;
+                totalObjects++;
+
+                if (obj.GetFoundCount() > 0 || obj.isMainEvidenceUnlocked)
+                {
+                    foundObjects++;
+                }
+
+                if (obj.subObjectInfos != null)
+                {
+                    foreach (var sub in obj.subObjectInfos)
+                    {
+                        if (sub != null)
+                        {
+                            totalSubInfos++;
+                            if (sub.isFound || sub.isVerified)
+                            {
+                                foundSubInfos++;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 計算分析維度：探索廣度 (Object Coverage) 與 細節敏銳度 (Sub-object Granularity)
+        float objectCoverage = (totalObjects > 0) ? (float)foundObjects / totalObjects : 0f;
+        float subObjectGranularity = (totalSubInfos > 0) ? (float)foundSubInfos / totalSubInfos : 0f;
+
+        Dictionary<string, object> metrics = new Dictionary<string, object>
+        {
+            { "動作事件", actionEventName },
+            { "目前目標代號", currentTarget != null ? currentTarget.mainInfoID : "None" },
+            { "已發現物件數", foundObjects },
+            { "總物件數", totalObjects },
+            { "物件探索覆蓋率", objectCoverage },
+            { "已發現子線索數", foundSubInfos },
+            { "總子線索數", totalSubInfos },
+            { "子線索細節敏銳度", subObjectGranularity }
+        };
+
+        AnalyticsManager.Instance.TrackEvent("線索蒐集探索檔案", metrics);
     }
 
     public void StopInspect()
     {
         if (!isInspecting) return;
+
+        // 【新增】當玩家結束檢視時，記錄當前的線索蒐集與探索能力總結
+        LogSearchExplorationMetrics("inspect_closed");
+
         isInspecting = false;
 
-        Debug.Log("[InspectManager Debug] Exiting 3D inspect mode.");
+        if (closeButton != null)
+        {
+            closeButton.SetActive(false);
+        }
+
+        if (titleText != null) titleText.gameObject.SetActive(false);
+
+        ClearSubObjectUIs();
+
+        if (taskText != null) taskText.SetActive(true);
+
+        if (activeInspectEffect != null)
+        {
+            Destroy(activeInspectEffect);
+            activeInspectEffect = null;
+        }
 
         if (currentTarget != null)
         {
@@ -518,6 +941,19 @@ public class InspectManager : MonoBehaviour
 
         RemoveInspectCameraURP();
         RestoreGameManagerControls();
+
+        GameManager gmManager = FindObjectOfType<GameManager>();
+        if (gmManager != null)
+        {
+            bool isBrowserOpen = VirtualBrowserController.Instance != null &&
+                                 VirtualBrowserController.Instance.backgroundPanel != null &&
+                                 VirtualBrowserController.Instance.backgroundPanel.activeInHierarchy;
+
+            if (!isBrowserOpen)
+            {
+                gmManager.SetPlayerInputActive(true);
+            }
+        }
     }
 
     private void CreateInspectCameraURP(Camera mainCam)
@@ -537,11 +973,10 @@ public class InspectManager : MonoBehaviour
         var mainCameraData = mainCam.GetUniversalAdditionalCameraData();
         if (mainCameraData != null)
         {
-            mainCameraData.cameraStack.Add(inspectCamera);
+            mainCameraData.cameraStack.Insert(0, inspectCamera);
         }
 
         mainCam.cullingMask &= ~inspectLayer.value;
-        Debug.Log("[InspectManager Debug] InspectCamera URP Overlay setup completed.");
     }
 
     private void RemoveInspectCameraURP()
@@ -569,7 +1004,6 @@ public class InspectManager : MonoBehaviour
     {
         if (Input.GetKeyDown(KeyCode.Escape) || Input.GetMouseButtonDown(1))
         {
-            Debug.Log("[InspectManager Debug] ESC or Right-click detected, requesting exit from inspect mode.");
             StopInspect();
             return;
         }
@@ -595,51 +1029,169 @@ public class InspectManager : MonoBehaviour
 
         if (Input.GetMouseButtonDown(0))
         {
+            Debug.Log("[InspectManager Debug] 偵測到滑鼠左鍵按下 (GetMouseButtonDown)。");
+
             if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject())
             {
-                Debug.Log("[InspectManager Debug] Clicked on UI during inspect mode, ignoring sub-evidence raycast.");
-                return;
+                string blockedUIName = "未知 UI 物件";
+                bool isActualUI = false;
+
+                if (EventSystem.current.currentSelectedGameObject != null)
+                {
+                    blockedUIName = EventSystem.current.currentSelectedGameObject.name;
+                    isActualUI = true;
+                }
+                else
+                {
+                    PointerEventData pointerData = new PointerEventData(EventSystem.current)
+                    {
+                        position = Input.mousePosition
+                    };
+                    List<RaycastResult> results = new List<RaycastResult>();
+                    EventSystem.current.RaycastAll(pointerData, results);
+
+                    if (results.Count > 0)
+                    {
+                        blockedUIName = results[0].gameObject.name;
+
+                        if (blockedUIName != "Floor" && results[0].gameObject.layer == LayerMask.NameToLayer("UI"))
+                        {
+                            isActualUI = true;
+                        }
+                    }
+                }
+
+                if (isActualUI)
+                {
+                    Debug.Log($"<color=orange>[InspectManager Debug] 點擊被阻擋：滑鼠目前正處於 UI 元素上方。阻擋的元兇是 UI: [{blockedUIName}]</color>");
+                    return;
+                }
+                else
+                {
+                    Debug.Log($"[InspectManager Debug] 偵測到 IsPointerOverGameObject 誤判抓到了非 UI 物件 [{blockedUIName}]，已自動略過並允許 3D 點擊。");
+                }
             }
 
             Ray ray = inspectCamera.ScreenPointToRay(Input.mousePosition);
-            Debug.Log($"[InspectManager Debug] Inspect mode Raycast cast at pos: {Input.mousePosition}");
+            Debug.Log($"[InspectManager Debug] 從 inspectCamera 發射射線。滑鼠螢幕座標: {Input.mousePosition} | 射線起點: {ray.origin} | 射線方向: {ray.direction}");
 
             if (Physics.Raycast(ray, out RaycastHit hit, 100f, inspectLayer))
             {
-                Debug.Log($"[InspectManager Debug] Inspect mode Raycast hit cloned object: [{hit.collider.gameObject.name}]");
                 GameObject hitGo = hit.collider.gameObject;
+                Debug.Log($"<color=green>[InspectManager Debug] 射線成功擊中碰撞體！</color> 擊中物件名稱: {hitGo.name} | 擊中圖層(Layer): {LayerMask.LayerToName(hitGo.layer)} | 距離: {hit.distance}");
 
                 InspectableObject clonedInfo = clonedObject.GetComponent<InspectableObject>();
                 if (clonedInfo == null) clonedInfo = clonedObject.GetComponentInChildren<InspectableObject>();
 
                 if (clonedInfo != null && currentTarget != null)
                 {
+                    Debug.Log($"[InspectManager Debug] 成功取得 clonedInfo 與 currentTarget。開始比對子物件資訊...");
+
                     if (clonedInfo.TryGetSubObjectInfo(hitGo, out SubObjectInfo foundSubInfo, out int index))
                     {
-                        if (!foundSubInfo.isFound)
-                        {
-                            Debug.Log($"<color=cyan>[InspectManager Debug] Sub-evidence found: (Index: {index})!</color>");
-                            clonedInfo.MarkAsFound(index);
-                            currentTarget.MarkAsFound(index);
+                        Debug.Log($"<color=green>[InspectManager Debug] 子物件比對成功！</color> 找到對應 SubObject 索引: {index} | subID: {foundSubInfo.subID}");
 
-                            UpdateSlotFillProgress(currentTarget);
+                        if (foundSubInfo.subGameObject != null && foundSubInfo.subGameObject.activeInHierarchy)
+                        {
+                            Debug.Log($"[InspectManager Debug] 子物件狀態檢查：ActiveInHierarchy 為 true。目前 isFound 狀態: {foundSubInfo.isFound}");
+
+                            if (!foundSubInfo.isFound)
+                            {
+                                Debug.Log($"<color=cyan>[InspectManager Debug] 首次發現該子物件！準備標記為 Found 並解鎖...</color>");
+                                clonedInfo.MarkAsFound(index);
+                                currentTarget.MarkAsFound(index);
+
+                                if (!string.IsNullOrEmpty(foundSubInfo.foundInkKnot))
+                                {
+                                    GameManager gm = FindObjectOfType<GameManager>();
+                                    if (gm != null)
+                                    {
+                                        Debug.Log($"[InspectManager Debug] 觸發對應的 Ink Knot: {foundSubInfo.foundInkKnot}");
+                                        gm.ExecuteKnot(foundSubInfo.foundInkKnot);
+                                    }
+                                }
+
+                                PlaySuccessEffectAtMousePosition(Input.mousePosition);
+
+                                if (SoundManager.Instance != null && !string.IsNullOrEmpty(subObjectFoundSoundID))
+                                {
+                                    SoundManager.Instance.PlaySound(subObjectFoundSoundID);
+                                }
+
+                                UpdateSlotFillProgress(currentTarget);
+                                UpdateSubObjectUIs();
+
+                                // 【新增】當玩家成功點擊並發現新的子線索時，立即記錄線索蒐集能力數據
+                                LogSearchExplorationMetrics("sub_object_found");
+                            }
+                            else
+                            {
+                                Debug.LogWarning($"[InspectManager Warning] 點擊到的子物件 [{hitGo.name}] 已經是 isFound = true 狀態了，故不重複觸發。");
+                            }
                         }
                         else
                         {
-                            Debug.Log($"[InspectManager Debug] Sub-evidence was already found previously.");
+                            Debug.LogWarning($"[InspectManager Warning] 點擊到的子物件匹配成功，但其 subGameObject 為 null 或在階層中是關閉的 (Inactive)。");
                         }
                     }
                     else
                     {
-                        Debug.Log($"[InspectManager Debug] Hit object [{hitGo.name}] is not registered in sub-evidence list.");
+                        Debug.LogWarning($"<color=orange>[InspectManager Warning] 射線打中了名為 [{hitGo.name}] 的碰撞體，但在 InspectableObject 的 subObjectInfos 列表中找不到任何匹配的子物件參考！</color>");
                     }
+                }
+                else
+                {
+                    Debug.LogError("[InspectManager Error] clonedInfo 或 currentTarget 為 null，無法進行子物件比對。");
                 }
             }
             else
             {
-                Debug.Log("[InspectManager Debug] Inspect mode Raycast missed all Inspect Layer objects.");
+                Debug.LogWarning($"<color=yellow>[InspectManager Warning] 射線發射後未擊中任何屬於 inspectLayer ({inspectLayer.value}) 層的 Collider。可能點空了，或者目標不在圖層內。</color>");
             }
         }
+    }
+
+    private Vector3 GetWorldPositionFromScreen(Vector2 screenPosition, Camera cam)
+    {
+        if (cam == null) cam = vfxCamera != null ? vfxCamera : Camera.main;
+        if (cam == null) return Vector3.zero;
+
+        float normalizedX = (screenPosition.x / Screen.width) - 0.5f;
+        float normalizedY = (screenPosition.y / Screen.height) - 0.5f;
+
+        normalizedX *= effectSensitivity.x;
+        normalizedY *= effectSensitivity.y;
+
+        float finalViewportX = normalizedX + 0.5f;
+        float finalViewportY = normalizedY + 0.5f;
+
+        Vector3 viewportPoint = new Vector3(finalViewportX, finalViewportY, effectDistanceFromCamera);
+        return cam.ViewportToWorldPoint(viewportPoint);
+    }
+
+    public void PlaySuccessEffectAtMousePosition(Vector2 screenPosition)
+    {
+        if (successEffectPrefab == null) return;
+
+        Camera targetCam = vfxCamera != null ? vfxCamera : Camera.main;
+        Vector3 worldPosition = GetWorldPositionFromScreen(screenPosition, targetCam);
+
+        GameObject effectObj = Instantiate(successEffectPrefab, worldPosition, Quaternion.identity);
+
+        int effectsLayer = LayerMask.NameToLayer("Effects");
+        SetLayerRecursively(effectObj, effectsLayer);
+
+        ParticleSystem[] systems = effectObj.GetComponentsInChildren<ParticleSystem>();
+        foreach (var ps in systems)
+        {
+            ps.Play();
+        }
+
+        Destroy(effectObj, 1.5f);
+    }
+
+    private void UpdateInspectEffectPosition()
+    {
     }
 
     private void SetLayerRecursively(GameObject obj, int newLayer)
@@ -648,7 +1200,10 @@ public class InspectManager : MonoBehaviour
         obj.layer = newLayer;
         foreach (Transform child in obj.transform)
         {
-            SetLayerRecursively(child.gameObject, newLayer);
+            if (child != null)
+            {
+                SetLayerRecursively(child.gameObject, newLayer);
+            }
         }
     }
 
@@ -674,34 +1229,23 @@ public class InspectManager : MonoBehaviour
     public void UpdateCurrentSlotProgress(InspectableObject target)
     {
         UpdateSlotFillProgress(target);
+        if (isInspecting && target == currentTarget)
+        {
+            UpdateSubObjectUIs();
+        }
     }
 
     private void PauseGameManagerControls()
     {
         previousGameManagerScriptStates.Clear();
+        originalAxisSpeeds.Clear();
+
         GameManager gm = FindObjectOfType<GameManager>();
-        if (gm == null)
-        {
-            Debug.LogWarning("[InspectManager Debug] GameManager object not found in scene.");
-            return;
-        }
+        if (gm == null) return;
 
-        Debug.Log("[InspectManager Debug] Pausing GameManager control scripts and Cinemachine cameras.");
-
-        MonoBehaviour[] cinemachineCameras = new MonoBehaviour[]
+        if (gm.cinemachineCamera != null)
         {
-            gm.firstPersonCamera,
-            gm.thirdPersonCamera,
-            gm.timelineCamera
-        };
-
-        foreach (var cam in cinemachineCameras)
-        {
-            if (cam != null && !previousGameManagerScriptStates.ContainsKey(cam))
-            {
-                previousGameManagerScriptStates[cam] = cam.enabled;
-                cam.enabled = false;
-            }
+            SetCinemachineCameraSpeed(gm.cinemachineCamera, 0f);
         }
 
         if (gm.cameraControlScripts != null)
@@ -722,19 +1266,9 @@ public class InspectManager : MonoBehaviour
         GameManager gm = FindObjectOfType<GameManager>();
         if (gm == null) return;
 
-        MonoBehaviour[] cinemachineCameras = new MonoBehaviour[]
+        if (gm.cinemachineCamera != null)
         {
-            gm.firstPersonCamera,
-            gm.thirdPersonCamera,
-            gm.timelineCamera
-        };
-
-        foreach (var cam in cinemachineCameras)
-        {
-            if (cam != null && cam.enabled)
-            {
-                cam.enabled = false;
-            }
+            SetCinemachineCameraSpeed(gm.cinemachineCamera, 0f);
         }
 
         if (gm.cameraControlScripts != null)
@@ -751,7 +1285,12 @@ public class InspectManager : MonoBehaviour
 
     private void RestoreGameManagerControls()
     {
-        Debug.Log("[InspectManager Debug] Restoring GameManager control scripts and cameras to original states.");
+        GameManager gm = FindObjectOfType<GameManager>();
+        if (gm != null && gm.cinemachineCamera != null)
+        {
+            RestoreCinemachineCameraSpeed();
+        }
+
         foreach (var kvp in previousGameManagerScriptStates)
         {
             if (kvp.Key != null)
@@ -760,5 +1299,162 @@ public class InspectManager : MonoBehaviour
             }
         }
         previousGameManagerScriptStates.Clear();
+    }
+
+    private void SetCinemachineCameraSpeed(MonoBehaviour camScript, float targetSpeed)
+    {
+        if (camScript == null) return;
+
+        System.Type type = camScript.GetType();
+        FieldInfo[] fields = type.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+        PropertyInfo[] properties = type.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+
+        foreach (var field in fields)
+        {
+            if (IsAxisType(field.FieldType))
+            {
+                object axisValue = field.GetValue(camScript);
+                if (axisValue != null)
+                {
+                    ModifyAxisSpeed(camScript, field, axisValue, targetSpeed);
+                }
+            }
+        }
+
+        foreach (var prop in properties)
+        {
+            if (prop.CanRead && prop.CanWrite && IsAxisType(prop.PropertyType))
+            {
+                object axisValue = prop.GetValue(camScript);
+                if (axisValue != null)
+                {
+                    ModifyAxisSpeed(camScript, prop, axisValue, targetSpeed);
+                }
+            }
+        }
+    }
+
+    private bool IsAxisType(System.Type type)
+    {
+        string name = type.Name;
+        return name.Contains("AxisBase") || name.Contains("CinemachineOrbitalTransposer") || name.Contains("POV") || name.Contains("Axis");
+    }
+
+    private void ModifyAxisSpeed(MonoBehaviour owner, MemberInfo member, object axisStruct, float targetSpeed)
+    {
+        if (owner == null || axisStruct == null) return;
+
+        System.Type axisType = axisStruct.GetType();
+        FieldInfo speedField = axisType.GetField("m_MaxSpeed", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
+                             ?? axisType.GetField("MaxSpeed", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
+                             ?? InspectManager_ModifyAxisSpeed_Fallback(axisType);
+
+        PropertyInfo speedProp = axisType.GetProperty("m_MaxSpeed", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
+                              ?? axisType.GetProperty("MaxSpeed", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+
+        float currentSpeed = 0f;
+        bool found = false;
+
+        if (speedField != null)
+        {
+            currentSpeed = (float)speedField.GetValue(axisStruct);
+            found = true;
+        }
+        else if (speedProp != null && speedProp.CanRead)
+        {
+            currentSpeed = (float)speedProp.GetValue(axisStruct);
+            found = true;
+        }
+
+        if (found)
+        {
+            string key = $"{owner.GetInstanceID()}_{member.Name}";
+            if (!originalAxisSpeeds.ContainsKey(key))
+            {
+                originalAxisSpeeds[key] = currentSpeed;
+            }
+
+            if (speedField != null) speedField.SetValue(axisStruct, targetSpeed);
+            else if (speedProp != null && speedProp.CanWrite) speedProp.SetValue(axisStruct, targetSpeed);
+
+            if (member is FieldInfo fInfo) fInfo.SetValue(owner, axisStruct);
+            else if (member is PropertyInfo pInfo && pInfo.CanWrite) pInfo.SetValue(owner, axisStruct);
+        }
+    }
+
+    private FieldInfo InspectManager_ModifyAxisSpeed_Fallback(System.Type axisType)
+    {
+        return axisType.GetField("m_Speed", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
+            ?? axisType.GetField("Speed", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+    }
+
+    private void RestoreCinemachineCameraSpeed()
+    {
+        GameManager gm = FindObjectOfType<GameManager>();
+        if (gm == null || gm.cinemachineCamera == null) return;
+
+        MonoBehaviour camScript = gm.cinemachineCamera;
+        System.Type type = camScript.GetType();
+
+        FieldInfo[] fields = type.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+        PropertyInfo[] properties = type.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+
+        foreach (var field in fields)
+        {
+            if (IsAxisType(field.FieldType))
+            {
+                string key = $"{camScript.GetInstanceID()}_{field.Name}";
+                if (originalAxisSpeeds.TryGetValue(key, out float origSpeed))
+                {
+                    object axisValue = field.GetValue(camScript);
+                    if (axisValue != null)
+                    {
+                        ModifyAxisSpeed(camScript, field, axisValue, origSpeed);
+                    }
+                }
+            }
+        }
+
+        originalAxisSpeeds.Clear();
+    }
+}
+
+public class HotbarSlotPointerHandler : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
+{
+    public InspectableObject targetObject;
+
+    public void OnPointerEnter(PointerEventData eventData)
+    {
+        if (VirtualBrowserController.Instance != null && IsBrowserActive())
+        {
+            InspectManager.Instance.ShowHoverSubObjects(targetObject, transform);
+        }
+    }
+
+    public void OnPointerExit(PointerEventData eventData)
+    {
+        if (VirtualBrowserController.Instance != null && IsBrowserActive())
+        {
+            InspectManager.Instance.DelayClearHoverSubObjects(0.25f);
+        }
+    }
+
+    private bool IsBrowserActive()
+    {
+        return VirtualBrowserController.Instance.backgroundPanel != null &&
+               VirtualBrowserController.Instance.backgroundPanel.activeInHierarchy;
+    }
+}
+
+public class HoverPanelPointerHandler : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
+{
+    public void OnPointerEnter(PointerEventData eventData)
+    {
+        InspectManager.Instance.CancelDelayClearHover();
+    }
+
+    public void OnPointerExit(PointerEventData eventData)
+    {
+        InspectManager.Instance.DelayClearHoverSubObjects(0.25f);
     }
 }

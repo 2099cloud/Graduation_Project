@@ -32,6 +32,9 @@ public class InteractiveDoor : MonoBehaviour
 
     private GameObject currentPlayer = null;
 
+    // 只記錄「這扇門自己」建立的按鈕，避免誤刪 Ink 選項按鈕（兩者共用同一個 choiceHolder）
+    private readonly List<GameObject> spawnedButtons = new List<GameObject>();
+
     private void Reset()
     {
         Collider col = GetComponent<Collider>();
@@ -46,6 +49,11 @@ public class InteractiveDoor : MonoBehaviour
         if (other.CompareTag(playerTag))
         {
             currentPlayer = other.gameObject;
+
+            // 過場播放中（例如 CharacterController 被重新啟用而再次進入觸發區）不要跳出門的選項
+            GameManager gm = FindObjectOfType<GameManager>();
+            if (gm != null && gm.IsTimelineCutsceneActive) return;
+
             ShowDoorChoices();
         }
     }
@@ -76,6 +84,7 @@ public class InteractiveDoor : MonoBehaviour
     private void CreateChoiceButton(string buttonText, UnityEngine.Events.UnityAction onClickAction)
     {
         GameObject btnObj = Instantiate(choiceButtonPrefab, choiceHolder);
+        spawnedButtons.Add(btnObj);
 
         TextMeshProUGUI tmpText = btnObj.GetComponentInChildren<TextMeshProUGUI>();
         if (tmpText != null)
@@ -165,12 +174,12 @@ public class InteractiveDoor : MonoBehaviour
 
     private void ClearChoices()
     {
-        if (choiceHolder == null) return;
-
-        foreach (Transform child in choiceHolder)
+        // 只清除這扇門自己建立的按鈕，不動 Ink 的選項
+        foreach (GameObject btn in spawnedButtons)
         {
-            Destroy(child.gameObject);
+            if (btn != null) Destroy(btn);
         }
+        spawnedButtons.Clear();
     }
 
     private void OnDisable()
